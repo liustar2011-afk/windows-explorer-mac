@@ -179,7 +179,7 @@ struct EmptyFolderView: View {
     var body: some View {
         VStack(spacing: 6) {
             Text(ex.tab.searching ? "No items match your search." : "This folder is empty.")
-                .font(Win.body(12))
+                .font(Win.body(13))
                 .foregroundStyle(Win.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -350,7 +350,7 @@ struct ColumnHeader: View {
                 HStack(spacing: 0) {
                     if trailing { Spacer(minLength: 0) }
                     Text(title)
-                        .font(Win.body(12))
+                        .font(Win.body(13))
                         .foregroundStyle(Win.textSecondary)
                         .lineLimit(1)
                     if !trailing { Spacer(minLength: 0) }
@@ -449,7 +449,7 @@ struct DetailsRow: View {
                         .frame(height: 20)
                 } else {
                     Text(item.displayName)
-                        .font(Win.body(12))
+                        .font(Win.body(13))
                         .foregroundStyle(item.isHidden ? Win.textTertiary : Win.text)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -461,7 +461,7 @@ struct DetailsRow: View {
 
             if let width = columns.date {
                 Text(item.modifiedText)
-                    .font(Win.body(12)).foregroundStyle(Win.textSecondary)
+                    .font(Win.body(13)).foregroundStyle(Win.textSecondary)
                     .lineLimit(1)
                     .padding(.leading, 6)
                     .frame(width: width, alignment: .leading)
@@ -469,7 +469,7 @@ struct DetailsRow: View {
 
             if let width = columns.type {
                 Text(item.typeName)
-                    .font(Win.body(12)).foregroundStyle(Win.textSecondary)
+                    .font(Win.body(13)).foregroundStyle(Win.textSecondary)
                     .lineLimit(1)
                     .padding(.leading, 6)
                     .frame(width: width, alignment: .leading)
@@ -477,7 +477,7 @@ struct DetailsRow: View {
 
             if let width = columns.size {
                 Text(item.sizeText)
-                    .font(Win.body(12)).foregroundStyle(Win.textSecondary)
+                    .font(Win.body(13)).foregroundStyle(Win.textSecondary)
                     .lineLimit(1)
                     .padding(.trailing, 10)
                     .frame(width: width, alignment: .trailing)
@@ -502,7 +502,7 @@ struct RenameField: View {
     @State private var text: String = ""
 
     var body: some View {
-        WinField(text: $text, fontSize: 12,
+        WinField(text: $text, fontSize: 13,
                  selectStem: !item.isDirectory,
                  selectAll: item.isDirectory,
                  onCommit: { s in ex.commitRename(item, to: s) },
@@ -564,7 +564,7 @@ struct IconCell: View {
                 RenameField(ex: ex, item: item).frame(height: 20).padding(.horizontal, 4)
             } else {
                 Text(item.displayName)
-                    .font(Win.body(12))
+                    .font(Win.body(13))
                     .foregroundStyle(Win.text)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
@@ -641,7 +641,7 @@ struct SmallRow: View {
                 RenameField(ex: ex, item: item).frame(height: 18)
             } else {
                 Text(item.displayName)
-                    .font(Win.body(12)).foregroundStyle(Win.text)
+                    .font(Win.body(13)).foregroundStyle(Win.text)
                     .lineLimit(1).truncationMode(.tail)
             }
             Spacer(minLength: 0)
@@ -699,11 +699,11 @@ struct TileCell: View {
                 if ex.tab.editing == item.id {
                     RenameField(ex: ex, item: item).frame(height: 20)
                 } else {
-                    Text(item.displayName).font(Win.body(12)).foregroundStyle(Win.text).lineLimit(1)
+                    Text(item.displayName).font(Win.body(13)).foregroundStyle(Win.text).lineLimit(1)
                 }
-                Text(item.typeName).font(Win.body(11)).foregroundStyle(Win.textSecondary).lineLimit(1)
+                Text(item.typeName).font(Win.body(12)).foregroundStyle(Win.textSecondary).lineLimit(1)
                 if !item.sizeText.isEmpty {
-                    Text(item.sizeText).font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                    Text(item.sizeText).font(Win.body(12)).foregroundStyle(Win.textTertiary)
                 }
             }
             Spacer(minLength: 0)
@@ -730,12 +730,12 @@ struct ContentRow: View {
                 if ex.tab.editing == item.id {
                     RenameField(ex: ex, item: item).frame(height: 20)
                 } else {
-                    Text(item.displayName).font(Win.body(12)).foregroundStyle(Win.text).lineLimit(1)
+                    Text(item.displayName).font(Win.body(13)).foregroundStyle(Win.text).lineLimit(1)
                 }
-                Text(item.modifiedText).font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                Text(item.modifiedText).font(Win.body(12)).foregroundStyle(Win.textSecondary)
             }
             Spacer(minLength: 0)
-            Text(item.sizeText).font(Win.body(11)).foregroundStyle(Win.textSecondary)
+            Text(item.sizeText).font(Win.body(12)).foregroundStyle(Win.textSecondary)
         }
         .padding(.horizontal, 10)
         .frame(height: 56)
