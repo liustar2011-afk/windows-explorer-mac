@@ -1,0 +1,70 @@
+name: Build macOS DMG
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Sources/**"
+      - "Tools/**"
+      - "build.sh"
+      - ".github/workflows/build-macos-dmg.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-dmg:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Apple Silicon app
+        run: |
+          chmod +x build.sh
+          ./build.sh
+          file "build/File Explorer.app/Contents/MacOS/FileExplorer"
+          test "$(lipo -archs "build/File Explorer.app/Contents/MacOS/FileExplorer")" = "arm64"
+
+      - name: Create DMG
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          ditto "build/File Explorer.app" "dist/File Explorer.app"
+          ln -s /Applications "dist/Applications"
+          hdiutil create \
+            -volname "File Explorer" \
+            -srcfolder dist \
+            -ov \
+            -format UDZO \
+            "build/FileExplorer-macOS-arm64.dmg"
+          shasum -a 256 "build/FileExplorer-macOS-arm64.dmg"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileExplorer-macOS-arm64
+          path: build/FileExplorer-macOS-arm64.dmg
+          if-no-files-found: error
+
+      - name: Publish rolling custom release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="custom-latest"
+          ASSET="build/FileExplorer-macOS-arm64.dmg"
+          NOTES="Apple Silicon (arm64), macOS 14+. Custom build from main. Ad-hoc signed; macOS may require Open Anyway on first launch."
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            git tag -f "$TAG" "$GITHUB_SHA"
+            git push -f origin "refs/tags/$TAG"
+            gh release upload "$TAG" "$ASSET" --clobber
+            gh release edit "$TAG" --title "File Explorer for Mac - Custom Latest" --notes "$NOTES" --prerelease
+          else
+            gh release create "$TAG" "$ASSET" \
+              --target "$GITHUB_SHA" \
+              --title "File Explorer for Mac - Custom Latest" \
+              --notes "$NOTES" \
+              --prerelease
+          fi
