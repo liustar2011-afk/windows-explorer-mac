@@ -1,4 +1,5 @@
 import AppKit
+import CoreServices
 import UniformTypeIdentifiers
 
 /// External requests navigate to folders and select files, never execute them.
@@ -59,62 +60,141 @@ struct ExternalTarget {
 
 final class SystemIntegration: ObservableObject {
     static let shared = SystemIntegration()
+
+    private static let finderBundleID = "com.apple.finder"
+    private static let handledContentTypes = ["public.folder", "public.directory"]
+
     @Published private(set) var currentApplication: URL?
+    @Published private(set) var fileViewerBundleID: String?
     @Published private(set) var changing = false
     @Published private(set) var error: String?
     @Published private(set) var succeeded = false
 
-    var isDefault: Bool {
-        currentApplication.flatMap { Bundle(url: $0)?.bundleIdentifier } == Bundle.main.bundleIdentifier
-            && Bundle.main.bundleIdentifier != nil
+    private var appBundleID: String? { Bundle.main.bundleIdentifier }
+
+    var folderHandlerIsFileExplorer: Bool {
+        guard let appBundleID else { return false }
+        return currentApplication.flatMap { Bundle(url: $0)?.bundleIdentifier } == appBundleID
     }
+
+    var revealHandlerIsFileExplorer: Bool {
+        guard let appBundleID else { return false }
+        return fileViewerBundleID == appBundleID
+    }
+
+    /// "Replace Finder" is active only when both normal folder opens and
+    /// Reveal/Show-in-Finder requests are routed to this app.
+    var isDefault: Bool { folderHandlerIsFileExplorer && revealHandlerIsFileExplorer }
 
     var currentName: String {
         guard let currentApplication else { return L("Unknown") }
-        if isDefault { return L("File Explorer") }
-        if Bundle(url: currentApplication)?.bundleIdentifier == "com.apple.finder" { return "Finder" }
+        if folderHandlerIsFileExplorer { return L("File Explorer") }
+        if Bundle(url: currentApplication)?.bundleIdentifier == Self.finderBundleID { return "Finder" }
         return currentApplication.deletingPathExtension().lastPathComponent
+    }
+
+    var revealViewerName: String {
+        guard let bundleID = fileViewerBundleID else { return L("Finder (system default)") }
+        if bundleID == appBundleID { return L("File Explorer") }
+        if bundleID == Self.finderBundleID { return "Finder" }
+        if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            return app.deletingPathExtension().lastPathComponent
+        }
+        return bundleID
     }
 
     func refresh() {
         currentApplication = NSWorkspace.shared.urlForApplication(toOpen: UTType.folder)
+        fileViewerBundleID = Self.globalFileViewerBundleID()
     }
 
-    func useFileExplorer() { change(to: Bundle.main.bundleURL) }
-
-    func restoreFinder() {
-        guard let finder = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.finder") else {
-            error = L("Finder could not be found.")
+    func useFileExplorer() {
+        guard let bundleID = appBundleID else {
+            error = L("File Explorer has no bundle identifier.")
             return
         }
-        change(to: finder)
+        change(folderHandlerBundleID: bundleID, fileViewerBundleID: bundleID, replacingFinder: true)
     }
 
-    private func change(to application: URL) {
+    func restoreFinder() {
+        change(folderHandlerBundleID: Self.finderBundleID, fileViewerBundleID: nil, replacingFinder: false)
+    }
+
+    private func change(folderHandlerBundleID: String,
+                        fileViewerBundleID: String?,
+                        replacingFinder: Bool) {
         guard !changing else { return }
-        changing = true; succeeded = false; error = nil
-        // Only ordinary folders. Document and application associations stay intact.
-        NSWorkspace.shared.setDefaultApplication(at: application, toOpen: UTType.folder) { failure in
-            DispatchQueue.main.async {
-                self.changing = false
-                self.refresh()
-                if let failure {
-                    let nsError = failure as NSError
-                    let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
-                    if (nsError.domain == NSOSStatusErrorDomain && nsError.code == -50)
-                        || (underlying?.domain == NSOSStatusErrorDomain && underlying?.code == -50) {
-                        self.error = L("This macOS version does not allow changing the default folder app through this interface. Finder remains the default; external open and reveal still work.")
-                    } else {
-                        self.error = LF("The system could not change the default folder app: {0}", failure.localizedDescription)
-                    }
-                } else if self.currentApplication.flatMap({ Bundle(url: $0)?.bundleIdentifier })
-                            == Bundle(url: application)?.bundleIdentifier {
+        changing = true
+        succeeded = false
+        error = nil
+
+        // LaunchServices owns the default handler for folders. The global
+        // NSFileViewer preference is separately consulted by many apps for
+        // "Reveal in Finder" / "Show in Finder", so both must be updated.
+        var failures: [String] = []
+        for contentType in Self.handledContentTypes {
+            let status = LSSetDefaultRoleHandlerForContentType(
+                contentType as CFString, .all, folderHandlerBundleID as CFString)
+            if status != noErr { failures.append("\(contentType): \(status)") }
+        }
+        Self.setGlobalFileViewer(fileViewerBundleID)
+
+        // LaunchServices and already-running apps can cache these values.
+        // Refresh shortly after the write so the UI shows what macOS currently
+        // reports, while still telling the user when a relaunch/sign-out is needed.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            self.changing = false
+            self.refresh()
+
+            if !failures.isEmpty {
+                self.error = LF("The system could not update Finder routing: {0}",
+                                failures.joined(separator: ", "))
+                return
+            }
+
+            if replacingFinder {
+                if self.isDefault {
                     self.succeeded = true
                 } else {
-                    self.error = L("The system has not applied the folder association. Refresh the status and try again.")
+                    self.error = L("Finder routing was updated, but macOS or an already-running app is still using cached settings. Sign out or restart, then check again.")
+                }
+            } else {
+                let folderIsFinder = self.currentApplication.flatMap {
+                    Bundle(url: $0)?.bundleIdentifier
+                } == Self.finderBundleID
+                let revealIsSystemDefault = self.fileViewerBundleID == nil
+                    || self.fileViewerBundleID == Self.finderBundleID
+                if folderIsFinder && revealIsSystemDefault {
+                    self.succeeded = true
+                } else {
+                    self.error = L("Finder routing was restored, but macOS is still reporting cached settings. Sign out or restart, then check again.")
                 }
             }
         }
+    }
+
+    private static func globalFileViewerBundleID() -> String? {
+        CFPreferencesCopyValue(
+            "NSFileViewer" as CFString,
+            kCFPreferencesAnyApplication,
+            kCFPreferencesCurrentUser,
+            kCFPreferencesAnyHost
+        ) as? String
+    }
+
+    private static func setGlobalFileViewer(_ bundleID: String?) {
+        CFPreferencesSetValue(
+            "NSFileViewer" as CFString,
+            bundleID as CFString?,
+            kCFPreferencesAnyApplication,
+            kCFPreferencesCurrentUser,
+            kCFPreferencesAnyHost
+        )
+        CFPreferencesSynchronize(
+            kCFPreferencesAnyApplication,
+            kCFPreferencesCurrentUser,
+            kCFPreferencesAnyHost
+        )
     }
 }
 

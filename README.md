@@ -221,6 +221,7 @@ The gear at the right end of the command bar, also in the `...` menu, the backgr
 - **Shortcuts.** Re-map any command. Click a shortcut, press the keys. If the combination is taken it is moved off the other command and you are told which. Per-command and global reset.
 - **Quick access.** Everything pinned to the sidebar. Unpin any of it, including the six Windows defaults, restore what you unpinned, add folders.
 - **Folder icons.** The folders you have customised, with a reset for each.
+- **Integration.** “Replace Finder” registers File Explorer for folder opens and the global `NSFileViewer` route used by many **Reveal/Show in Finder** actions. “Restore Finder” reverses both settings. Hard-coded Finder launches, the Desktop and system Open/Save dialogs remain macOS-owned.
 
 **Pinning.** Right-click any folder, in the list or the sidebar, then choose *Pin to Quick access*.
 
