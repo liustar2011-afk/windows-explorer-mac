@@ -186,6 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let arguments = ExternalTarget.commandLine(Array(ProcessInfo.processInfo.arguments.dropFirst()))
         receiveExternal(arguments.map { $0.0 }, revealDirectory: arguments.first?.1 ?? false)
         installKeyHandler()
+        FinderDockInterceptor.shared.resumeIfEnabled()
         NSApp.activate(ignoringOtherApps: true)
         if env["WINEXP_SELFTEST"] != nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { SelfTest.run() }

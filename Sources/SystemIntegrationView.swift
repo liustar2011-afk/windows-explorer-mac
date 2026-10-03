@@ -67,6 +67,11 @@ struct SystemIntegrationView: View {
                 .font(Win.body(12))
                 .foregroundStyle(Win.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
+
+
+            Divider().overlay(Win.divider)
+
+            FinderDockInterceptionSettings()
         }
         .onAppear { integration.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -87,6 +92,61 @@ struct SystemIntegrationView: View {
             Text(L("Not active"))
                 .font(Win.body(11))
                 .foregroundStyle(Win.textTertiary)
+        }
+    }
+}
+
+
+private struct FinderDockInterceptionSettings: View {
+    @ObservedObject private var interceptor = FinderDockInterceptor.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L("Dock Finder icon"))
+                .font(Win.body(13, weight: .semibold))
+                .foregroundStyle(Win.text)
+
+            SettingsRow(
+                title: L("Open File Explorer when Finder is clicked in the Dock"),
+                subtitle: interceptor.running
+                    ? L("Finder Dock clicks are being intercepted.")
+                    : (interceptor.enabled
+                        ? L("Waiting for Accessibility permission.")
+                        : L("Off. Finder keeps its normal Dock behavior.")),
+                icon: .folderOutline
+            ) {
+                WinToggle(isOn: Binding(
+                    get: { interceptor.enabled },
+                    set: { interceptor.setEnabled($0) }
+                ))
+            }
+
+            if interceptor.enabled && !interceptor.accessibilityTrusted {
+                HStack(spacing: 8) {
+                    WinDialogButton(title: L("Request Accessibility Access"), primary: true) {
+                        interceptor.requestAccessibilityAndStart()
+                    }
+                    WinDialogButton(title: L("Open Accessibility Settings")) {
+                        interceptor.openAccessibilitySettings()
+                    }
+                }
+            }
+
+            if let error = interceptor.error {
+                Text(error)
+                    .font(Win.body(11))
+                    .foregroundStyle(Win.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Text(L("This only changes clicks on Finder's Dock icon. It does not remove Finder or alter the Desktop."))
+                .font(Win.body(11))
+                .foregroundStyle(Win.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .onAppear { interceptor.refreshPermission() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            interceptor.refreshPermission()
         }
     }
 }

@@ -26,6 +26,7 @@ enum SelfTest {
         ex.go(to: root)
 
         checkExternalOpen(ex: ex, root: root)
+        checkFinderDockIdentity()
         checkLocalization(ex: ex)
 
         check("lists folder contents", ex.tab.items.count == 3)
@@ -716,6 +717,22 @@ enum SelfTest {
         ex.go(to: root)
         check("external reveal leaves file contents intact",
               (try? String(contentsOf: special, encoding: .utf8)) == "special")
+    }
+
+    private static func checkFinderDockIdentity() {
+        let finder = URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app")
+        check("Finder Dock identity prefers the Finder app URL",
+              FinderDockInterceptor.matchesFinderDockItem(
+                subrole: "AXApplicationDockItem", title: "访达", url: finder))
+        check("Finder Dock identity accepts the English title fallback",
+              FinderDockInterceptor.matchesFinderDockItem(
+                subrole: "AXApplicationDockItem", title: "Finder", url: nil))
+        check("Finder Dock identity accepts the Chinese title fallback",
+              FinderDockInterceptor.matchesFinderDockItem(
+                subrole: "AXApplicationDockItem", title: "访达", url: nil))
+        check("non-application Dock items are never intercepted",
+              !FinderDockInterceptor.matchesFinderDockItem(
+                subrole: "AXFolderDockItem", title: "Finder", url: finder))
     }
 
     private static func checkLocalization(ex: Explorer) {

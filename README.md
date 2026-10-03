@@ -222,6 +222,7 @@ The gear at the right end of the command bar, also in the `...` menu, the backgr
 - **Quick access.** Everything pinned to the sidebar. Unpin any of it, including the six Windows defaults, restore what you unpinned, add folders.
 - **Folder icons.** The folders you have customised, with a reset for each.
 - **Integration.** “Replace Finder” registers File Explorer for folder opens and the global `NSFileViewer` route used by many **Reveal/Show in Finder** actions. “Restore Finder” reverses both settings. Hard-coded Finder launches, the Desktop and system Open/Save dialogs remain macOS-owned.
+- **Dock Finder interception.** An optional Accessibility-powered switch can consume clicks on Finder’s Dock icon and bring File Explorer forward instead. It uses a session-level `CGEventTap` plus Accessibility hit-testing, prefers Finder’s app URL/bundle identity, and falls back to the localized Dock title. The switch is off by default.
 
 **Pinning.** Right-click any folder, in the list or the sidebar, then choose *Pin to Quick access*.
 
