@@ -38,6 +38,13 @@ enum Location: Hashable {
         }
     }
 
+    var displayTitle: String {
+        switch self {
+        case .folder, .archive: return title
+        default: return L(title)
+        }
+    }
+
     var icon: Icon {
         switch self {
         case .home: return .home
@@ -48,6 +55,39 @@ enum Location: Hashable {
         case .folder(let u): return Places.icon(for: u)
         case .archive: return .compress
         }
+    }
+}
+
+/// Plain text searches within names; wildcard queries match the whole filename.
+struct FilenameSearch {
+    private let query: String
+    private let expression: NSRegularExpression?
+
+    init(_ text: String) {
+        query = text.lowercased()
+        if text.contains("*") || text.contains("?") {
+            // Explorer's familiar *.* also includes names without an extension.
+            let pattern = text == "*.*" ? "*" : text
+            let body = pattern.map { character -> String in
+                switch character {
+                case "*": return ".*"
+                case "?": return "."
+                default: return NSRegularExpression.escapedPattern(for: String(character))
+                }
+            }.joined()
+            expression = try? NSRegularExpression(pattern: "\\A" + body + "\\z",
+                options: [.caseInsensitive, .dotMatchesLineSeparators])
+        } else {
+            expression = nil
+        }
+    }
+
+    func matches(_ name: String) -> Bool {
+        if let expression {
+            return expression.firstMatch(in: name,
+                range: NSRange(name.startIndex..<name.endIndex, in: name)) != nil
+        }
+        return name.lowercased().contains(query)
     }
 }
 
@@ -453,7 +493,7 @@ final class Explorer: ObservableObject {
             } else if let staged = Archives.stage(archive, entry: entry) {
                 NSWorkspace.shared.open(staged)
             } else {
-                sheet = .error("Could not extract “\(item.name)” from the archive.")
+                sheet = .error(LF("Could not extract “{0}” from the archive.", item.name))
             }
             return
         }
@@ -485,14 +525,14 @@ final class Explorer: ObservableObject {
     }
 
     private func runExtraction(_ archive: URL, entries: [String], to destination: URL) {
-        flash("Extracting \(archive.lastPathComponent)")
+        flash(LF("Extracting {0}", archive.lastPathComponent))
         DispatchQueue.global(qos: .userInitiated).async {
             let error = Archives.extract(archive, entries: entries, to: destination)
             DispatchQueue.main.async {
                 if let error {
-                    self.sheet = .error("Could not extract the archive.\n\(error)")
+                    self.sheet = .error(LF("Could not extract the archive.\n{0}", error))
                 } else {
-                    self.flash("Extracted to \(destination.lastPathComponent)")
+                    self.flash(LF("Extracted to {0}", destination.lastPathComponent))
                     if self.currentDirectory == destination.deletingLastPathComponent() {
                         self.reload()
                     }
@@ -630,14 +670,14 @@ final class Explorer: ObservableObject {
         let sel = selectedItems
         guard !sel.isEmpty else { return }
         Clipboard.copy(sel.map(\.url))
-        flash("\(sel.count) item\(sel.count == 1 ? "" : "s") copied")
+        flash(LF("{0} item{1} copied", sel.count, sel.count == 1 ? "" : "s"))
     }
 
     func cutSelection() {
         let sel = selectedItems
         guard !sel.isEmpty else { return }
         Clipboard.cut(sel.map(\.url))
-        flash("\(sel.count) item\(sel.count == 1 ? "" : "s") cut")
+        flash(LF("{0} item{1} cut", sel.count, sel.count == 1 ? "" : "s"))
     }
 
     func paste() {
@@ -682,7 +722,7 @@ final class Explorer: ObservableObject {
         let paths = sel.isEmpty ? [currentDirectory?.path].compactMap { $0 } : sel.map { "\"\($0.url.path)\"" }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(paths.joined(separator: " "), forType: .string)
-        flash("Path copied")
+        flash(L("Path copied"))
     }
 
     // MARK: Mutations
@@ -728,7 +768,7 @@ final class Explorer: ObservableObject {
             reload()
             tab.selection = [dest.path]
         } catch {
-            sheet = .error("The file name you specified is not valid or too long.")
+            sheet = .error(L("The file name you specified is not valid or too long."))
         }
     }
 
@@ -759,7 +799,7 @@ final class Explorer: ObservableObject {
     func recordBatchRename(_ renames: [(from: URL, to: URL)]) {
         guard !renames.isEmpty else { return }
         push(.move(items: renames))
-        flash("Renamed \(renames.count) item\(renames.count == 1 ? "" : "s")")
+        flash(LF("Renamed {0} item{1}", renames.count, renames.count == 1 ? "" : "s"))
     }
 
     func zipSelection() {
@@ -803,7 +843,7 @@ final class Explorer: ObservableObject {
         }
         redoStack.append(a)
         reload()
-        flash("Undo \(a.label)")
+        flash(LF("Undo {0}", L(a.label)))
     }
 
     func redo() {
@@ -839,7 +879,7 @@ final class Explorer: ObservableObject {
         let key = prefs.sortKey, asc = prefs.sortAscending
         let work = DispatchWorkItem { [weak self] in
             var found: [FileItem] = []
-            let needle = text.lowercased()
+            let matcher = FilenameSearch(text)
             let e = FileManager.default.enumerator(
                 at: root, includingPropertiesForKeys: Loader.keys,
                 options: showHidden ? [] : [.skipsHiddenFiles],
@@ -848,7 +888,7 @@ final class Explorer: ObservableObject {
             while let u = e?.nextObject() as? URL {
                 scanned += 1
                 if scanned > 40000 { break }
-                if u.lastPathComponent.lowercased().contains(needle),
+                if matcher.matches(u.lastPathComponent),
                    let item = Loader.item(at: u) {
                     found.append(item)
                     if found.count >= 1000 { break }
@@ -876,11 +916,15 @@ final class Explorer: ObservableObject {
         }
     }
 
+    var displayedItemCount: Int {
+        if case .home = tab.location { return Places.quickAccess.count + recentFiles.count }
+        return tab.items.count
+    }
+
     var statusText: String {
         if let m = statusMessage { return m }
-        var n = tab.items.count
-        if case .home = tab.location { n = Places.quickAccess.count + recentFiles.count }
-        return "\(n) item\(n == 1 ? "" : "s")"
+        let n = displayedItemCount
+        return LF("{0} item{1}", n, n == 1 ? "" : "s")
     }
 
     var selectionText: String? {
@@ -888,7 +932,7 @@ final class Explorer: ObservableObject {
         guard !sel.isEmpty else { return nil }
         let bytes = sel.reduce(Int64(0)) { $0 + $1.size }
         let sizePart = sel.contains(where: { $0.isDirectory }) ? "" : "  \(FileItem.friendlySize(bytes))"
-        return "\(sel.count) item\(sel.count == 1 ? "" : "s") selected\(sizePart)"
+        return LF("{0} item{1} selected{2}", sel.count, sel.count == 1 ? "" : "s", sizePart)
     }
 
     // MARK: Breadcrumbs
@@ -902,11 +946,11 @@ final class Explorer: ObservableObject {
 
     var breadcrumbs: [Crumb] {
         switch tab.location {
-        case .home: return [Crumb(title: "Home", location: .home, icon: .home)]
-        case .thisPC: return [Crumb(title: "This PC", location: .thisPC, icon: .thisPC)]
-        case .gallery: return [Crumb(title: "Gallery", location: .gallery, icon: .gallery)]
-        case .network: return [Crumb(title: "Network", location: .network, icon: .network)]
-        case .recycleBin: return [Crumb(title: "Recycle Bin", location: .recycleBin, icon: .recycleBin)]
+        case .home: return [Crumb(title: L("Home"), location: .home, icon: .home)]
+        case .thisPC: return [Crumb(title: L("This PC"), location: .thisPC, icon: .thisPC)]
+        case .gallery: return [Crumb(title: L("Gallery"), location: .gallery, icon: .gallery)]
+        case .network: return [Crumb(title: L("Network"), location: .network, icon: .network)]
+        case .recycleBin: return [Crumb(title: L("Recycle Bin"), location: .recycleBin, icon: .recycleBin)]
         case .archive(let archive, let inner):
             var crumbs = folderCrumbs(archive.deletingLastPathComponent())
             crumbs.append(Crumb(title: archive.lastPathComponent,
@@ -934,7 +978,7 @@ final class Explorer: ObservableObject {
             if parent.path == u.path { break }
             u = parent
         }
-        crumbs.insert(Crumb(title: "This PC", location: .thisPC, icon: .thisPC), at: 0)
+        crumbs.insert(Crumb(title: L("This PC"), location: .thisPC, icon: .thisPC), at: 0)
         return crumbs
     }
 
@@ -953,7 +997,7 @@ final class Explorer: ObservableObject {
         if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) {
             if isDir.boolValue { go(to: url) } else { NSWorkspace.shared.open(url) }
         } else {
-            sheet = .error("Windows can't find '\(raw)'. Check the spelling and try again.")
+            sheet = .error(LF("Windows can't find '{0}'. Check the spelling and try again.", raw))
         }
     }
 }

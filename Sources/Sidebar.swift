@@ -15,6 +15,7 @@ struct NavNode: Identifiable {
 }
 
 struct NavPane: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     @State private var hoverID: String?
@@ -93,6 +94,7 @@ struct NavPane: View {
 }
 
 struct NavRow: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let node: NavNode
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
@@ -133,7 +135,7 @@ struct NavRow: View {
             }
 
             Text(node.title)
-                .font(Win.body(12))
+                .font(Win.body(13))
                 .foregroundStyle(Win.text)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -141,12 +143,12 @@ struct NavRow: View {
 
             Spacer(minLength: 4)
 
-            if node.pinned {
+            if node.pinned && (hovering || selected) {
                 Glyph(icon: .pin, size: 12, color: Win.textTertiary, weight: 1.2)
                     .padding(.trailing, 6)
             }
         }
-        .frame(height: 30)
+        .frame(height: 32)
         .padding(.leading, 4)
         .background(
             WinRR(radius: 4)
@@ -178,27 +180,33 @@ struct NavRow: View {
     private func menuEntries() -> [MenuEntry] {
         var entries: [MenuEntry] = []
         if let loc = node.location {
-            entries.append(MenuEntry(title: "Open", icon: .openWith) { ex.go(to: loc) })
-            entries.append(MenuEntry(title: "Open in new tab", icon: .plus) { ex.go(to: loc, newTab: true) })
-            entries.append(MenuEntry(title: "Open in new window") { AppState.shared.openNewWindow(at: loc) })
+            entries.append(MenuEntry(title: L("Open"), icon: .openWith) { ex.go(to: loc) })
+            entries.append(MenuEntry(title: L("Open in new tab"), icon: .plus) { ex.go(to: loc, newTab: true) })
+            entries.append(MenuEntry(title: L("Open in new window")) { AppState.shared.openNewWindow(at: loc) })
         }
         guard let url = node.url else { return entries }
+        if ExternalVolumes.canEject(url) {
+            entries.append(.sep())
+            entries.append(MenuEntry(title: L("Eject")) {
+                ExternalVolumes.eject(url, explorer: ex)
+            })
+        }
         let settings = Settings.shared
         let pinned = settings.isPinned(url) && !settings.hiddenPlaces.contains(url.path)
         entries.append(.sep())
-        entries.append(MenuEntry(title: pinned ? "Unpin from Quick access" : "Pin to Quick access",
+        entries.append(MenuEntry(title: pinned ? L("Unpin from Quick access") : L("Pin to Quick access"),
                                  icon: pinned ? .unpin : .pin) {
             if pinned { settings.unpin(url) } else { settings.pin(url) }
         })
-        entries.append(MenuEntry(title: "Change icon…", icon: .palette) {
+        entries.append(MenuEntry(title: L("Change icon…"), icon: .palette) {
             if let i = Loader.item(at: url) { ex.sheet = .folderIcon(i) }
         })
         entries.append(.sep())
-        entries.append(MenuEntry(title: "Copy as path", icon: .copy) {
+        entries.append(MenuEntry(title: L("Copy as path"), icon: .copy) {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(url.path, forType: .string)
         })
-        entries.append(MenuEntry(title: "Properties", icon: .properties) {
+        entries.append(MenuEntry(title: L("Properties"), icon: .properties) {
             if let i = Loader.item(at: url) { ex.sheet = .properties([i]) }
         })
         return entries

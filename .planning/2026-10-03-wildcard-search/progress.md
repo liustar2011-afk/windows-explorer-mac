@@ -1,0 +1,1 @@
+Build succeeded; 132 tests passed, 0 failed. Installed app backed up and updated; binary hashes match. Verified through native UI in /Volumes/DOC/PPT-Integrated: *.png returns PNG results (1000-result existing limit). Original tabs restored after update. git diff --check passed.

@@ -68,6 +68,7 @@ final class MenuController: ObservableObject {
 // MARK: - Toolbar button
 
 struct WinButton<Content: View>: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     var id: String? = nil
     var tooltip: String? = nil
     var enabled: Bool = true
@@ -118,6 +119,7 @@ struct WinButton<Content: View>: View {
 }
 
 struct HelpIfPresent: ViewModifier {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let text: String?
     func body(content: Content) -> some View {
         if let text { content.help(text) } else { content }
@@ -134,6 +136,7 @@ extension View {
 // MARK: - Flyout rendering
 
 struct FlyoutView: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let open: MenuController.Open
     /// True when there isn't room to the right, so submenus open leftwards.
     var flipSubmenus: Bool = false
@@ -174,6 +177,7 @@ struct FlyoutView: View {
 private let menuSubmenuCloseDelay = 0.28
 
 struct MenuRow: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let entry: MenuEntry
     var parentWidth: CGFloat = 240
     var flipSubmenus: Bool = false
@@ -287,6 +291,7 @@ struct MenuRow: View {
 // control, Esc/Enter handling, and Windows' "select the stem, not the extension".
 
 struct WinField: NSViewRepresentable {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @Binding var text: String
     var placeholder: String = ""
     var fontSize: CGFloat = 12
@@ -303,7 +308,7 @@ struct WinField: NSViewRepresentable {
         f.drawsBackground = false
         f.focusRingType = .none
         f.font = NSFont(name: Win.uiFontName, size: fontSize) ?? .systemFont(ofSize: fontSize)
-        f.placeholderString = placeholder
+        f.placeholderString = L(placeholder)
         f.lineBreakMode = .byTruncatingTail
         f.cell?.usesSingleLineMode = true
         f.cell?.wraps = false
@@ -327,6 +332,7 @@ struct WinField: NSViewRepresentable {
     func updateNSView(_ nsView: NSTextField, context: Context) {
         context.coordinator.parent = self
         if nsView.stringValue != text { nsView.stringValue = text }
+        nsView.placeholderString = L(placeholder)
         nsView.textColor = NSColor(Win.text)
     }
 
@@ -368,6 +374,7 @@ struct WinField: NSViewRepresentable {
 // MARK: - Small helpers
 
 struct HoverFill: ViewModifier {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @State private var hovering = false
     var corner: CGFloat = 4
     var enabled: Bool = true
@@ -386,6 +393,7 @@ extension View {
 
 /// Windows' item check boxes (View > Show > Item check boxes).
 struct WinCheckbox: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let checked: Bool
     let action: () -> Void
     @State private var hovering = false
@@ -407,6 +415,7 @@ struct WinCheckbox: View {
 /// A Fluent-styled segmented picker, so dialogs do not fall back to the
 /// native macOS popup and break the illusion.
 struct WinSegmented<T: Hashable>: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let options: [(label: String, value: T)]
     @Binding var selection: T
 
@@ -414,7 +423,7 @@ struct WinSegmented<T: Hashable>: View {
         HStack(spacing: 2) {
             ForEach(Array(options.enumerated()), id: \.offset) { _, option in
                 let isOn = option.value == selection
-                Text(option.label)
+                Text(L(option.label))
                     .font(Win.body(11))
                     .foregroundStyle(isOn ? Win.textOnAccent : Win.text)
                     .lineLimit(1)
@@ -433,6 +442,7 @@ struct WinSegmented<T: Hashable>: View {
 
 /// Makes a region drag the window, the way the Explorer tab strip does.
 struct WindowDragArea: NSViewRepresentable {
+    @ObservedObject private var interfaceSettings = Settings.shared
     final class DragView: NSView {
         override func mouseDown(with event: NSEvent) {
             if event.clickCount == 2 { window?.zoom(nil) }

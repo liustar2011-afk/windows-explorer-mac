@@ -74,6 +74,7 @@ enum Workspaces {
 // MARK: - Dialog
 
 struct WorkspacesDialog: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var model: WindowModel
     let onClose: () -> Void
 
@@ -81,14 +82,14 @@ struct WorkspacesDialog: View {
     @State private var newName = ""
 
     var body: some View {
-        WinDialog(title: "Workspaces", width: 480, onClose: onClose) {
+        WinDialog(title: L("Workspaces"), width: 480, onClose: onClose) {
             VStack(alignment: .leading, spacing: 14) {
-                Text("A workspace remembers the tabs open in each pane, the split, and the view mode.")
+                Text(L("A workspace remembers the tabs open in each pane, the split, and the view mode."))
                     .font(Win.body(11)).foregroundStyle(Win.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 8) {
-                    TextField("Name this workspace", text: $newName)
+                    TextField(L("Name this workspace"), text: $newName)
                         .textFieldStyle(.plain)
                         .font(Win.body(12)).foregroundStyle(Win.text)
                         .padding(.horizontal, 10)
@@ -96,14 +97,14 @@ struct WorkspacesDialog: View {
                         .background(WinRR(radius: 4).fill(Win.field))
                         .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
                         .onSubmit { saveCurrent() }
-                    WinDialogButton(title: "Save", primary: true,
+                    WinDialogButton(title: L("Save"), primary: true,
                                     enabled: !newName.trimmingCharacters(in: .whitespaces).isEmpty) {
                         saveCurrent()
                     }
                 }
 
                 if saved.isEmpty {
-                    Text("Nothing saved yet.")
+                    Text(L("Nothing saved yet."))
                         .font(Win.body(12)).foregroundStyle(Win.textSecondary)
                 } else {
                     ScrollView {
@@ -120,14 +121,14 @@ struct WorkspacesDialog: View {
                                             .lineLimit(1)
                                     }
                                     Spacer(minLength: 8)
-                                    WinButton(tooltip: "Open", padding: 8, height: 26) {
+                                    WinButton(tooltip: L("Open"), padding: 8, height: 26) {
                                         Workspaces.restore(workspace, into: model)
                                         onClose()
                                     } content: {
-                                        Text("Open").font(Win.body(11)).foregroundStyle(Win.text)
+                                        Text(L("Open")).font(Win.body(11)).foregroundStyle(Win.text)
                                     }
                                     .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
-                                    WinButton(tooltip: "Delete", padding: 6, height: 26) {
+                                    WinButton(tooltip: L("Delete"), padding: 6, height: 26) {
                                         Workspaces.delete(workspace)
                                         saved = Workspaces.all
                                     } content: {
@@ -146,14 +147,14 @@ struct WorkspacesDialog: View {
             }
             .padding(18)
         } footer: {
-            WinDialogButton(title: "Done", primary: true, action: onClose)
+            WinDialogButton(title: L("Done"), primary: true, action: onClose)
         }
     }
 
     private func summary(_ workspace: Workspace) -> String {
         let tabs = workspace.leftPaths.count + workspace.rightPaths.count
-        let panes = workspace.dual ? "two panes" : "one pane"
-        return "\(panes), \(tabs) tab\(tabs == 1 ? "" : "s")"
+        let panes = workspace.dual ? L("two panes") : L("one pane")
+        return LF("{0}, {1} tab{2}", panes, tabs, tabs == 1 ? "" : "s")
     }
 
     private func saveCurrent() {

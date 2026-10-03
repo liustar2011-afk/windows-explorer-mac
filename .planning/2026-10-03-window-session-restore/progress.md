@@ -1,0 +1,3 @@
+Build succeeded. SelfTest: 124 passed, 0 failed, including session serialization, pane/tab restoration, geometry, missing folders, archive paths and corrupt data. git diff --check passed. README updated.
+
+Follow-up: user was running /Applications copy with old binary hash b6bb3062; built binary hash 0018d227. Backed up installed bundle and updated it using ditto. Installed and built hashes now match. Normal installed-app run persisted lastWindowSession with two folder tabs and active index 1; observed current UI matches saved tabs and active folder. CUA quit actions reported user state changes, so refreshed state before further actions. No source change required.

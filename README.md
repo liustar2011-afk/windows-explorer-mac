@@ -77,6 +77,11 @@ Everything below is optional. Turn a feature off and the app is still the Explor
 
 **Workspaces.** Save the tabs open in each pane, the split and the view mode under a name, and restore them later.
 
+**Reopen last session.** The next launch automatically restores the windows from your last exit, including their tabs, active pane, split and window positions. Closing the last window also remembers it. Folders that no longer exist reopen at Home.
+
+**Search.** Search recursively with plain text or filename wildcards: `*.txt`, `report*.pdf`, and `file?.csv`. Matching is case-insensitive; `*.*` includes names without extensions.
+
+
 **Network shares** (`Ctrl+K`). Connect to SMB, AFP, NFS, FTP and WebDAV, with recent servers remembered. macOS owns the sign-in, so no password is ever typed into File Explorer. SFTP and S3 are not supported, because macOS cannot mount them without a third-party filesystem.
 
 **Commands.** Your own scripts in the context menu, with the selection in the environment (`$FE_SELECTION`, `$FE_NAMES`, `$FE_FIRST`, `$FE_DIR`, `$FE_COUNT`). Managed from Settings, stored in `~/Library/Application Support/File Explorer/commands.json`. Deliberately scripts rather than loadable native code: a plugin that can crash or compromise the app is not a feature.
@@ -171,6 +176,40 @@ Every shortcut works with **`Ctrl`** (as on Windows) *and* **`Cmd`** (as Mac mus
 </table>
 
 `Ctrl+D` is Windows' `Win+D`: it hides every app so the desktop itself is showing, and puts them back when you press it again.
+
+## Interface language
+
+Choose **Settings > Appearance > Language** to use the system language, English,
+or Simplified Chinese. Changes apply immediately and the choice is remembered.
+Chinese covers navigation, toolbars, context menus, settings, dialogs, file types,
+dates and transfer status. Filenames, real paths, scripts and saved layout identifiers
+are preserved. Native macOS permission messages follow the system's app language.
+
+The interface also uses distinct toolbar/sidebar/content surfaces, restrained accent
+selection, a wider navigation pane and system typography with Chinese font fallback.
+Comfortable 32pt file rows remain the default; Compact view keeps 24pt rows.
+Alternating row backgrounds are enabled by default in Details view. Toggle them in
+Settings > Appearance > Layout or the View menu; selection and hover highlights take priority.
+
+## System integration
+
+Settings > Integration shows the current default folder app, lets you set File Explorer
+as the default for ordinary folders, and offers Restore Finder. This changes only
+`public.folder`, not document or application associations. macOS may request consent.
+Apps that explicitly target Finder and native Open/Save dialogs are not replaced.
+
+External callers can open a directory or reveal files in their containing folder:
+
+```bash
+open -a "File Explorer" "/path/to/folder"
+open -a "File Explorer" "/path/to/file.txt"
+```
+
+A running app receives these requests too. Files in the same folder are selected in
+one tab, and explicitly requested hidden files can be revealed without changing the
+hidden-files preference. For configurable integrations, percent-encode an absolute
+path in `file-explorer://open?path=…` or `file-explorer://reveal?path=…`.
+The executable also accepts paths and `--reveal` (to select a folder in its parent).
 
 ## Settings
 
@@ -281,3 +320,5 @@ return the licence requires that the [NOTICE](NOTICE) file travels with any copy
 or derivative you distribute, which credits Alex Degryse and links back to this
 repository. If you ship it inside an app, that notice belongs in your
 acknowledgements screen.
+
+On macOS 27.0 (26A428), the system currently rejects changing `public.folder` with error -50. The setting reports this limitation and leaves Finder as default. Explicit app opens and the custom URL scheme still work; automatic redirection is not enabled on this system.

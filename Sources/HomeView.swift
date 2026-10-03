@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 
 struct HomeView: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     @State private var quickExpanded = true
@@ -11,7 +12,7 @@ struct HomeView: View {
     var body: some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 0) {
-                SectionHeader(title: "Quick access", expanded: $quickExpanded)
+                SectionHeader(title: L("Quick access"), expanded: $quickExpanded)
                     .padding(.top, 10)
 
                 if quickExpanded {
@@ -36,9 +37,9 @@ struct HomeView: View {
                     .buttonStyle(.plain)
                     .hoverFill()
 
-                    Pill(title: "Recent", icon: .clock, selected: recentTab == 0) { recentTab = 0 }
-                    Pill(title: "Favorites", icon: .star, selected: recentTab == 1) { recentTab = 1 }
-                    Pill(title: "Shared", icon: .people, selected: recentTab == 2) { recentTab = 2 }
+                    Pill(title: L("Recent"), icon: .clock, selected: recentTab == 0) { recentTab = 0 }
+                    Pill(title: L("Favorites"), icon: .star, selected: recentTab == 1) { recentTab = 1 }
+                    Pill(title: L("Shared"), icon: .people, selected: recentTab == 2) { recentTab = 2 }
                 }
                 .padding(.leading, 8)
                 .padding(.top, 20)
@@ -71,6 +72,7 @@ struct HomeView: View {
 }
 
 struct SectionHeader: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let title: String
     @Binding var expanded: Bool
 
@@ -93,6 +95,7 @@ struct SectionHeader: View {
 }
 
 struct Pill: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let title: String
     let icon: Icon
     let selected: Bool
@@ -117,6 +120,7 @@ struct Pill: View {
 }
 
 struct QuickTile: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let place: Place
     @ObservedObject var ex: Explorer
     @State private var hovering = false
@@ -133,9 +137,11 @@ struct QuickTile: View {
             }
             VStack(alignment: .leading, spacing: 1) {
                 Text(place.title)
-                    .font(Win.body(12)).foregroundStyle(Win.text).lineLimit(1)
-                Text(subtitle)
-                    .font(Win.body(11)).foregroundStyle(Win.textSecondary).lineLimit(1)
+                    .font(Win.body(13, weight: .medium)).foregroundStyle(Win.text).lineLimit(1)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(Win.body(11)).foregroundStyle(Win.textSecondary).lineLimit(1)
+                }
                 if place.pinned {
                     Glyph(icon: .pin, size: 11, color: Win.textTertiary, weight: 1.2)
                         .padding(.top, 1)
@@ -164,12 +170,13 @@ struct QuickTile: View {
             return "OneDrive"
         }
         let parent = url.deletingLastPathComponent()
-        if parent.path == Places.home.path { return "Stored locally" }
+        if parent.path == Places.home.path { return "" }
         return "\(Places.displayName(for: parent))\\\(url.lastPathComponent)"
     }
 }
 
 struct RecentTable: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     let tab: Int
@@ -192,16 +199,16 @@ struct RecentTable: View {
     private func table(columns: RecentColumns) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
-                Text("Name")
+                Text(L("Name"))
                     .frame(width: columns.name, alignment: .leading).padding(.leading, 40)
                 if let width = columns.date {
-                    Text("Date accessed").frame(width: width, alignment: .leading)
+                    Text(L("Date accessed")).frame(width: width, alignment: .leading)
                 }
                 if let width = columns.account {
-                    Text("Account").frame(width: width, alignment: .leading)
+                    Text(L("Account")).frame(width: width, alignment: .leading)
                 }
                 if let width = columns.activity {
-                    Text("Activity").frame(width: width, alignment: .leading)
+                    Text(L("Activity")).frame(width: width, alignment: .leading)
                 }
                 Spacer(minLength: 0)
             }
@@ -213,7 +220,7 @@ struct RecentTable: View {
             Divider().overlay(Win.divider).padding(.horizontal, 12)
 
             if rows.isEmpty {
-                Text(tab == 2 ? "No shared files." : "No recent files.")
+                Text(tab == 2 ? L("No shared files.") : L("No recent files."))
                     .font(Win.body(12)).foregroundStyle(Win.textTertiary)
                     .padding(.horizontal, 52).padding(.vertical, 16)
             } else {
@@ -253,6 +260,7 @@ struct RecentColumns {
 }
 
 struct RecentRow: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     let item: FileItem
@@ -292,16 +300,16 @@ struct RecentRow: View {
         .onTapGesture(count: 1) { ex.open(item) }
         .onRightClick { p in
             menus.show(id: "recent", anchor: .zero, entries: [
-                MenuEntry(title: "Open", icon: .openWith) { ex.open(item) },
-                MenuEntry(title: "Open file location", icon: .folderOutline) {
+                MenuEntry(title: L("Open"), icon: .openWith) { ex.open(item) },
+                MenuEntry(title: L("Open file location"), icon: .folderOutline) {
                     ex.go(to: item.url.deletingLastPathComponent())
                 },
                 .sep(),
-                MenuEntry(title: "Copy as path", icon: .copy) {
+                MenuEntry(title: L("Copy as path"), icon: .copy) {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(item.url.path, forType: .string)
                 },
-                MenuEntry(title: "Properties", icon: .properties) { ex.sheet = .properties([item]) },
+                MenuEntry(title: L("Properties"), icon: .properties) { ex.sheet = .properties([item]) },
             ], width: 240, point: p)
         }
     }

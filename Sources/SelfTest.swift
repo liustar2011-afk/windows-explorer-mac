@@ -25,12 +25,15 @@ enum SelfTest {
         }
         ex.go(to: root)
 
+        checkExternalOpen(ex: ex, root: root)
+        checkLocalization(ex: ex)
+
         check("lists folder contents", ex.tab.items.count == 3)
         check("folders sort before files", ex.tab.items.first?.name == "subfolder")
         check("size column uses Windows KB format",
               ex.tab.items.first(where: { $0.name == "alpha.txt" })?.sizeText == "1 KB")
         check("type column uses Windows wording",
-              ex.tab.items.first(where: { $0.name == "alpha.txt" })?.typeName == "Text Document")
+              ex.tab.items.first(where: { $0.name == "alpha.txt" })?.typeName == L("Text Document"))
 
         // Ctrl+A / Ctrl+Shift+A
         send(ex, "a", ctrl: true)
@@ -206,6 +209,7 @@ enum SelfTest {
                   ex.tab.searching && ex.tab.items.contains { $0.name == "alpha.txt" })
 
             // The queued copy and move land after the synchronous script ends.
+            checkWildcardSearch(ex: ex, root: root) {
             afterTransfers {
                 check("the queued paste copied the file in",
                       fm.fileExists(atPath: sub.appendingPathComponent("alpha.txt").path))
@@ -218,6 +222,41 @@ enum SelfTest {
                 checkCustomCommand(ex: ex, root: root) {
                     checkTransfers(root: root, sub: sub) { finish() }
                 }
+            }
+            }
+        }
+    }
+
+    private static func checkWildcardSearch(ex: Explorer, root: URL, done: @escaping () -> Void) {
+        check("wildcards match extensions without matching longer extensions",
+              FilenameSearch("*.TXT").matches("alpha.txt")
+              && !FilenameSearch("*.txt").matches("alpha.txt.bak"))
+        check("wildcards support filename prefixes and a single character",
+              FilenameSearch("alpha*.txt").matches("alpha-report.txt")
+              && FilenameSearch("file?.txt").matches("file1.txt")
+              && !FilenameSearch("file?.txt").matches("file12.txt"))
+        check("wildcards escape regex punctuation and support Chinese names",
+              FilenameSearch("报告[1]*.pdf").matches("报告[1]终稿.pdf")
+              && !FilenameSearch("报告[1]*.pdf").matches("报告1终稿.pdf"))
+        check("star-dot-star includes extensionless names",
+              FilenameSearch("*.*").matches("README"))
+        check("plain searches still match substrings literally",
+              FilenameSearch("PHA").matches("alpha.txt")
+              && FilenameSearch("[1]").matches("报告[1].pdf"))
+        ex.go(to: root)
+        ex.updateSearch("*.txt")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            check("recursive wildcard search returns matching files",
+                  ex.tab.searching && ex.tab.items.contains { $0.name == "alpha.txt" }
+                  && ex.tab.items.allSatisfy { $0.name.lowercased().hasSuffix(".txt") })
+            ex.updateSearch("alpha*.txt")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                check("recursive wildcard search applies filename prefixes",
+                      !ex.tab.items.isEmpty
+                      && ex.tab.items.allSatisfy { $0.name.hasPrefix("alpha") && $0.name.hasSuffix(".txt") })
+                ex.updateSearch("")
+                check("clearing wildcard search returns to folder contents", !ex.tab.searching)
+                done()
             }
         }
     }
@@ -496,6 +535,38 @@ enum SelfTest {
               && model.left.currentDirectory?.path == sub.path)
         Workspaces.delete(workspace)
         check("a workspace can be deleted", !Workspaces.all.contains { $0.name == "selftest" })
+
+        guard let window = NSApp.keyWindow else { return }
+        let sessionModel = WindowModel(start: .gallery)
+        sessionModel.left.openTab(.folder(sub))
+        if !sessionModel.dual { sessionModel.toggleDual() }
+        sessionModel.right?.go(to: .network)
+        sessionModel.activate(.right)
+        sessionModel.splitRatio = 0.65
+        let original = WindowSession.saved
+        WindowSession.saved = [SavedWindow(window: window, model: sessionModel)]
+        let restored = WindowModel()
+        if let saved = WindowSession.saved.first {
+            saved.restore(into: restored)
+            check("session restores tabs and special locations",
+                  restored.left.tabs.count == 2 && restored.left.tabs[0].location == .gallery
+                  && restored.left.currentDirectory?.path == sub.path)
+            check("session restores the active pane and split",
+                  restored.dual && restored.activeSide == .right
+                  && restored.right?.tab.location == .network
+                  && abs(restored.splitRatio - 0.65) < 0.001)
+            check("session preserves window geometry", saved.frame == NSStringFromRect(window.frame))
+        } else { check("session persists across encoding and decoding", false) }
+        let missing = root.appendingPathComponent("missing-session-folder")
+        check("session falls back to Home for missing folders",
+              SavedLocation(.folder(missing)).location == .home)
+        check("session preserves archive paths",
+              SavedLocation(.archive(root.appendingPathComponent("alpha.txt"), "nested"))
+                .location == .archive(root.appendingPathComponent("alpha.txt"), "nested"))
+        Store.defaults.set(Data("invalid".utf8), forKey: "lastWindowSession")
+        check("session ignores corrupt saved data", WindowSession.saved.isEmpty)
+        WindowSession.saved = original
+
     }
 
     private static func checkRightClickRouting() {
@@ -591,6 +662,110 @@ enum SelfTest {
     private static func check(_ name: String, _ condition: Bool) {
         if condition { passed += 1; print("  PASS  \(name)") }
         else { failed += 1; print("  FAIL  \(name)") }
+    }
+
+    private static func checkExternalOpen(ex: Explorer, root: URL) {
+        let fm = FileManager.default
+        let file = root.appendingPathComponent("alpha.txt")
+        let hidden = root.appendingPathComponent(".external-hidden.txt")
+        let special = root.appendingPathComponent("外部 {1}% & #文件.txt")
+        fm.createFile(atPath: hidden.path, contents: Data("hidden".utf8))
+        fm.createFile(atPath: special.path, contents: Data("special".utf8))
+        defer {
+            try? fm.removeItem(at: hidden); try? fm.removeItem(at: special)
+            ex.go(to: root)
+        }
+        let directoryTarget = try? ExternalTarget.parse(root)
+        check("external directory requests open the directory",
+              directoryTarget?.directory.path == root.path && directoryTarget?.selection == nil)
+        let fileTarget = try? ExternalTarget.parse(file)
+        check("external file requests select the file in its parent",
+              fileTarget?.directory.path == root.path && fileTarget?.selection == file)
+        let revealFolder = try? ExternalTarget.parse(root.appendingPathComponent("subfolder"), revealDirectory: true)
+        check("explicit reveal selects a folder instead of entering it",
+              revealFolder?.directory.path == root.path && revealFolder?.selection?.path == root.appendingPathComponent("subfolder").path)
+        var link = URLComponents()
+        link.scheme = "file-explorer"; link.host = "reveal"
+        link.queryItems = [URLQueryItem(name: "path", value: special.path)]
+        let linked = link.url.flatMap { try? ExternalTarget.parse($0) }
+        check("external links preserve Unicode and reserved path characters",
+              linked?.selection?.path == special.path && linked?.directory.path == root.path)
+        check("network URLs cannot become file requests",
+              (try? ExternalTarget.parse(URL(string: "https://example.com/file")!)) == nil)
+        check("links without an absolute path are rejected",
+              (try? ExternalTarget.parse(URL(string: "file-explorer://open?path=relative")!)) == nil)
+        check("missing external paths are reported",
+              (try? ExternalTarget.parse(root.appendingPathComponent("missing-external"))) == nil)
+        let arguments = ExternalTarget.commandLine(["--reveal", special.path])
+        check("command-line reveal preserves the path and mode",
+              arguments.count == 1 && arguments[0].0 == special && arguments[0].1)
+        let showHidden = Prefs.shared.showHidden
+        ex.go(to: root)
+        ex.revealExternal([file, hidden, special, hidden])
+        check("external reveal selects multiple and hidden files without changing preferences",
+              ex.tab.selection.count == 3 && Prefs.shared.showHidden == showHidden
+              && ex.selectedItems.contains { $0.url == hidden })
+        check("duplicate external paths cannot duplicate file rows",
+              ex.tab.items.filter { $0.url.path == hidden.path }.count == 1)
+        let tabCount = ex.tabs.count
+        AppState.shared.openExternal([ExternalTarget(directory: root, selection: file),
+                                      ExternalTarget(directory: root, selection: special)])
+        check("external files in an open folder reuse its tab and select both files",
+              ex.tabs.count == tabCount && ex.tab.selection.count == 2
+              && ex.selectedItems.contains { $0.url.standardizedFileURL.path == file.standardizedFileURL.path })
+        ex.go(to: root)
+        check("external reveal leaves file contents intact",
+              (try? String(contentsOf: special, encoding: .utf8)) == "special")
+    }
+
+    private static func checkLocalization(ex: Explorer) {
+        let settings = Settings.shared
+        let original = settings.language
+        defer { settings.language = original }
+        let originalNames = ex.tab.items.map(\.name)
+        let originalPaths = ex.tab.items.map { $0.url.path }
+        let originalTabs = ex.tabs.map(\.id)
+        let originalSelection = ex.tab.selection
+        let viewID = Prefs.shared.viewMode.rawValue
+        let groupID = Prefs.shared.groupBy
+
+        settings.language = .english
+        let englishCommandTitles = Command.allCases.map(\.title)
+        settings.language = .simplifiedChinese
+        check("Chinese commands and navigation are localized",
+              Command.copy.title == "复制" && Location.home.displayTitle == "主页")
+        check("language preference is saved independently",
+              Store.defaults.string(forKey: "interfaceLanguage") == "zh-Hans")
+        check("English storage identifiers remain stable in Chinese",
+              ViewMode.details.rawValue == "Details" && Location.home.title == "Home"
+              && Prefs.shared.viewMode.rawValue == viewID && Prefs.shared.groupBy == groupID)
+        let file = Loader.item(at: ex.tab.items.first(where: { $0.ext == "txt" })!.url)!
+        check("file type and date use Chinese formatting",
+              file.typeName == "文本文档" && !file.modifiedText.contains("AM") && !file.modifiedText.contains("PM"))
+        check("Chinese quantities have no English plural suffix",
+              LF("{0} item{1}", 2, "s") == "2 个项目")
+        let trickyName = "资料{1}%@.txt"
+        check("format arguments cannot become placeholders",
+              LF("{0} Files, {1} Folders", trickyName, 3) == trickyName + " 个文件，3 个文件夹")
+        check("all command, view and theme labels have Chinese translations",
+              zip(Command.allCases, englishCommandTitles).allSatisfy { $0.0.title != $0.1 }
+              && ViewMode.allCases.allSatisfy { L($0.rawValue) != $0.rawValue }
+              && ThemeMode.allCases.allSatisfy { L($0.rawValue) != $0.rawValue })
+        if let model = AppState.shared.activeModel {
+            let workspace = Workspaces.capture(model, named: "中文工作区")
+            check("workspaces retain their stored special locations across languages",
+                  Workspaces.location(for: "Home") == .home
+                  && Workspaces.location(for: "This PC") == .thisPC
+                  && ViewMode(rawValue: workspace.viewMode) != nil)
+        }
+        settings.language = .english
+        check("switching to English updates labels immediately",
+              Command.copy.title == "Copy" && Location.home.displayTitle == "Home"
+              && file.typeName == "Text Document")
+        check("switching language preserves filenames, paths, tabs and selection",
+              ex.tab.items.map(\.name) == originalNames
+              && ex.tab.items.map { $0.url.path } == originalPaths
+              && ex.tabs.map(\.id) == originalTabs && ex.tab.selection == originalSelection)
     }
 
     private static func finish() {

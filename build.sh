@@ -46,17 +46,36 @@ iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 build/makeicon "$APP/Contents/Resources/AppIcon.png" 1024 >/dev/null
 rm -f build/makeicon
 
+# Bundle localized native app names and macOS permission messages.
+for locale in Resources/*.lproj; do
+    [ -d "$locale" ] && cp -R "$locale" "$APP/Contents/Resources/"
+done
+
 echo "==> Writing Info.plist"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>CFBundleDevelopmentRegion</key><string>en</string>
+    <key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hans</string></array>
     <key>CFBundleName</key>              <string>$NAME</string>
     <key>CFBundleDisplayName</key>       <string>$NAME</string>
     <key>CFBundleExecutable</key>        <string>FileExplorer</string>
     <key>CFBundleIdentifier</key>        <string>$BUNDLE_ID</string>
     <key>CFBundleIconFile</key>          <string>AppIcon</string>
+    <key>CFBundleDocumentTypes</key>
+    <array><dict>
+        <key>CFBundleTypeName</key><string>Folder</string>
+        <key>CFBundleTypeRole</key><string>Viewer</string>
+        <key>LSHandlerRank</key><string>Alternate</string>
+        <key>LSItemContentTypes</key><array><string>public.folder</string></array>
+    </dict></array>
+    <key>CFBundleURLTypes</key>
+    <array><dict>
+        <key>CFBundleURLName</key><string>com.winexplorer.mac.navigation</string>
+        <key>CFBundleURLSchemes</key><array><string>file-explorer</string></array>
+    </dict></array>
     <key>CFBundlePackageType</key>       <string>APPL</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundleVersion</key>           <string>$VERSION</string>

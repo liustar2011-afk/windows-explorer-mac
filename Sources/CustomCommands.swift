@@ -107,11 +107,11 @@ final class CustomCommands: ObservableObject {
         process.standardOutput = pipe
         process.standardError = pipe
 
-        explorer.flash("Running \(command.name)")
+        explorer.flash(LF("Running {0}", command.name))
         DispatchQueue.global(qos: .userInitiated).async {
             do { try process.run() } catch {
                 DispatchQueue.main.async {
-                    explorer.sheet = .error("Could not run “\(command.name)”.\n\(error.localizedDescription)")
+                    explorer.sheet = .error(LF("Could not run “{0}”.\n{1}", command.name, error.localizedDescription))
                 }
                 return
             }
@@ -123,10 +123,10 @@ final class CustomCommands: ObservableObject {
 
             DispatchQueue.main.async {
                 if status != 0 {
-                    explorer.sheet = .error("“\(command.name)” exited with status \(status)."
+                    explorer.sheet = .error(LF("“{0}” exited with status {1}.", command.name, status)
                                             + (output.isEmpty ? "" : "\n\n\(output)"))
                 } else {
-                    explorer.flash(output.isEmpty ? "\(command.name) finished"
+                    explorer.flash(output.isEmpty ? LF("{0} finished", command.name)
                                                   : String(output.prefix(120)))
                 }
                 if command.refreshAfter { explorer.reload() }
@@ -138,13 +138,14 @@ final class CustomCommands: ObservableObject {
 // MARK: - Settings section
 
 struct CustomCommandsSettings: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var store = CustomCommands.shared
     @State private var editing: CustomCommand?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Commands run in zsh with your selection in the environment: "
+                Text(L("Commands run in zsh with your selection in the environment: ")
                      + "$FE_SELECTION, $FE_NAMES, $FE_FIRST, $FE_DIR, $FE_COUNT.")
                     .font(Win.body(11)).foregroundStyle(Win.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -158,7 +159,7 @@ struct CustomCommandsSettings: View {
                 } content: {
                     HStack(spacing: 6) {
                         Glyph(icon: .plus, size: 11, color: Win.text, weight: 1.4)
-                        Text("New command").font(Win.body(11)).foregroundStyle(Win.text)
+                        Text(L("New command")).font(Win.body(11)).foregroundStyle(Win.text)
                     }
                 }
                 .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
@@ -166,7 +167,7 @@ struct CustomCommandsSettings: View {
                 WinButton(padding: 10, height: 26) {
                     NSWorkspace.shared.activateFileViewerSelecting([CustomCommands.storeURL])
                 } content: {
-                    Text("Show commands.json").font(Win.body(11)).foregroundStyle(Win.text)
+                    Text(L("Show commands.json")).font(Win.body(11)).foregroundStyle(Win.text)
                 }
                 .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
                 Spacer()
@@ -179,18 +180,18 @@ struct CustomCommandsSettings: View {
                               color: Win.textSecondary, weight: 1.15)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(command.name).font(Win.body(12)).foregroundStyle(Win.text)
-                            Text(command.applies.rawValue)
+                            Text(L(command.applies.rawValue))
                                 .font(Win.body(11)).foregroundStyle(Win.textTertiary)
                         }
                         Spacer(minLength: 8)
                         WinButton(padding: 8, height: 26) {
                             editing = editing?.id == command.id ? nil : command
                         } content: {
-                            Text(editing?.id == command.id ? "Done" : "Edit")
+                            Text(editing?.id == command.id ? L("Done") : L("Edit"))
                                 .font(Win.body(11)).foregroundStyle(Win.text)
                         }
                         .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
-                        WinButton(tooltip: "Delete", padding: 6, height: 26) {
+                        WinButton(tooltip: L("Delete"), padding: 6, height: 26) {
                             store.commands.removeAll { $0.id == command.id }
                             if editing?.id == command.id { editing = nil }
                         } content: {
@@ -221,15 +222,15 @@ struct CustomCommandsSettings: View {
 
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                LabelledField(label: "Name", text: binding.name, width: 190)
+                LabelledField(label: L("Name"), text: binding.name, width: 190)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Applies to").font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                    Text(L("Applies to")).font(Win.body(11)).foregroundStyle(Win.textTertiary)
                     WinSegmented(options: CustomCommand.Applies.allCases.map { ($0.shortLabel, $0) },
                                  selection: binding.applies)
                 }
                 Spacer(minLength: 0)
             }
-            Text("Script").font(Win.body(11)).foregroundStyle(Win.textTertiary)
+            Text(L("Script")).font(Win.body(11)).foregroundStyle(Win.textTertiary)
             TextEditor(text: binding.script)
                 .font(.system(size: 11, design: .monospaced))
                 .scrollContentBackground(.hidden)
@@ -241,7 +242,7 @@ struct CustomCommandsSettings: View {
                 WinCheckbox(checked: binding.wrappedValue.refreshAfter) {
                     binding.wrappedValue.refreshAfter.toggle()
                 }
-                Text("Refresh the folder afterwards")
+                Text(L("Refresh the folder afterwards"))
                     .font(Win.body(11)).foregroundStyle(Win.textSecondary)
             }
         }

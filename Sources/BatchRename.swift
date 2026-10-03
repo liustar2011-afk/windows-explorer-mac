@@ -56,6 +56,7 @@ struct RenamePlan {
 // MARK: - Dialog
 
 struct BatchRenameDialog: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     let items: [FileItem]
     var maxHeight: CGFloat = 340
@@ -86,7 +87,7 @@ struct BatchRenameDialog: View {
     }
 
     var body: some View {
-        WinDialog(title: "Rename \(items.count) items", width: 620, onClose: onClose) {
+        WinDialog(title: LF("Rename {0} items", items.count), width: 620, onClose: onClose) {
             VStack(alignment: .leading, spacing: 0) {
                 rules
                 Divider().overlay(Win.divider)
@@ -94,45 +95,45 @@ struct BatchRenameDialog: View {
             }
         } footer: {
             if !conflicts.isEmpty {
-                Text("\(conflicts.count) name\(conflicts.count == 1 ? "" : "s") would clash")
+                Text(LF("{0} name{1} would clash", conflicts.count, conflicts.count == 1 ? "" : "s"))
                     .font(Win.body(11)).foregroundStyle(Win.danger)
                 Spacer()
             }
-            WinDialogButton(title: "Rename", primary: true,
+            WinDialogButton(title: L("Rename"), primary: true,
                             enabled: changedCount > 0 && conflicts.isEmpty) {
                 apply()
             }
-            WinDialogButton(title: "Cancel", action: onClose)
+            WinDialogButton(title: L("Cancel"), action: onClose)
         }
     }
 
     private var rules: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                LabelledField(label: "Find", text: $plan.find, width: 170)
-                LabelledField(label: "Replace with", text: $plan.replace, width: 170)
+                LabelledField(label: L("Find"), text: $plan.find, width: 170)
+                LabelledField(label: L("Replace with"), text: $plan.replace, width: 170)
                 HStack(spacing: 7) {
                     WinCheckbox(checked: plan.caseSensitive) { plan.caseSensitive.toggle() }
-                    Text("Match case").font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                    Text(L("Match case")).font(Win.body(11)).foregroundStyle(Win.textSecondary)
                 }
                 .padding(.top, 14)
                 Spacer(minLength: 0)
             }
             HStack(spacing: 10) {
-                LabelledField(label: "Prefix", text: $plan.prefix, width: 130)
-                LabelledField(label: "Suffix", text: $plan.suffix, width: 130)
-                LabelledField(label: "New extension", text: $plan.newExtension, width: 110)
+                LabelledField(label: L("Prefix"), text: $plan.prefix, width: 130)
+                LabelledField(label: L("Suffix"), text: $plan.suffix, width: 130)
+                LabelledField(label: L("New extension"), text: $plan.newExtension, width: 110)
                 Spacer(minLength: 0)
             }
             HStack(spacing: 14) {
                 HStack(spacing: 7) {
                     WinCheckbox(checked: plan.numbering) { plan.numbering.toggle() }
-                    Text("Number them").font(Win.body(12)).foregroundStyle(Win.text)
+                    Text(L("Number them")).font(Win.body(12)).foregroundStyle(Win.text)
                 }
                 if plan.numbering {
-                    Stepper("Start at \(plan.startAt)", value: $plan.startAt, in: 0...9999)
+                    Stepper(LF("Start at {0}", plan.startAt), value: $plan.startAt, in: 0...9999)
                         .font(Win.body(11)).foregroundStyle(Win.textSecondary)
-                    Stepper("\(plan.digits) digits", value: $plan.digits, in: 1...6)
+                    Stepper(LF("{0} digits", plan.digits), value: $plan.digits, in: 1...6)
                         .font(Win.body(11)).foregroundStyle(Win.textSecondary)
                 }
                 Spacer(minLength: 0)
@@ -146,10 +147,10 @@ struct BatchRenameDialog: View {
     private var preview: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Preview").font(Win.body(11, weight: .semibold))
+                Text(L("Preview")).font(Win.body(11, weight: .semibold))
                     .foregroundStyle(Win.textSecondary)
                 Spacer()
-                Text("\(changedCount) of \(items.count) will change")
+                Text(LF("{0} of {1} will change", changedCount, items.count))
                     .font(Win.body(11)).foregroundStyle(Win.textTertiary)
             }
             .padding(.horizontal, 16)
@@ -189,7 +190,7 @@ struct BatchRenameDialog: View {
                 try FileManager.default.moveItem(at: item.url, to: target)
                 renames.append((item.url, target))
             } catch {
-                ex.sheet = .error("Could not rename “\(item.name)”. \(error.localizedDescription)")
+                ex.sheet = .error(LF("Could not rename “{0}”. {1}", item.name, error.localizedDescription))
                 return
             }
         }
@@ -200,6 +201,7 @@ struct BatchRenameDialog: View {
 }
 
 struct LabelledField: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let label: String
     @Binding var text: String
     var width: CGFloat = 150

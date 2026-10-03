@@ -4,6 +4,7 @@ import AppKit
 // MARK: - Windows-style dialog chrome
 
 struct WinDialog<Content: View, Footer: View>: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let title: String
     var width: CGFloat = 400
     let onClose: () -> Void
@@ -42,6 +43,7 @@ struct WinDialog<Content: View, Footer: View>: View {
 }
 
 struct WinDialogButton: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let title: String
     var primary: Bool = false
     var enabled: Bool = true
@@ -69,6 +71,7 @@ struct WinDialogButton: View {
 // MARK: - Properties
 
 struct PropertiesDialog: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let items: [FileItem]
     var maxHeight: CGFloat = 340
     let onClose: () -> Void
@@ -83,10 +86,10 @@ struct PropertiesDialog: View {
     }
 
     var body: some View {
-        WinDialog(title: "\(titleName) Properties", width: 420, onClose: onClose) {
+        WinDialog(title: LF("{0} Properties", titleName), width: 420, onClose: onClose) {
             VStack(spacing: 0) {
                 HStack(spacing: 22) {
-                    ForEach(Array(["General", "Details"].enumerated()), id: \.offset) { i, name in
+                    ForEach(Array([L("General"), L("Details")].enumerated()), id: \.offset) { i, name in
                         VStack(spacing: 4) {
                             Text(name)
                                 .font(Win.body(12))
@@ -110,14 +113,14 @@ struct PropertiesDialog: View {
                 .frame(height: min(340, maxHeight))
             }
         } footer: {
-            WinDialogButton(title: "OK", primary: true, action: onClose)
-            WinDialogButton(title: "Cancel", action: onClose)
+            WinDialogButton(title: L("OK"), primary: true, action: onClose)
+            WinDialogButton(title: L("Cancel"), action: onClose)
         }
         .onAppear(perform: computeSize)
     }
 
     private var titleName: String {
-        single.map { $0.displayName } ?? "\(items.count) items"
+        single.map { $0.displayName } ?? LF("{0} items", items.count)
     }
 
     private var general: some View {
@@ -134,19 +137,19 @@ struct PropertiesDialog: View {
 
             VStack(spacing: 0) {
                 if let single {
-                    DialogRow("Type of file:", single.typeName)
-                    DialogRow("Location:", single.url.deletingLastPathComponent().path)
+                    DialogRow(L("Type of file:"), single.typeName)
+                    DialogRow(L("Location:"), single.url.deletingLastPathComponent().path)
                 }
-                DialogRow("Size:", "\(FileItem.friendlySize(totalBytes)) (\(FileItem.bytesText(totalBytes)))")
+                DialogRow(L("Size:"), "\(FileItem.friendlySize(totalBytes)) (\(FileItem.bytesText(totalBytes)))")
                 if let c = computed {
-                    DialogRow("Contains:", "\(c.files) Files, \(c.folders) Folders")
+                    DialogRow(L("Contains:"), LF("{0} Files, {1} Folders", c.files, c.folders))
                 }
                 if let single {
                     Divider().overlay(Win.divider).padding(.vertical, 8)
-                    DialogRow("Created:", single.createdText)
-                    DialogRow("Modified:", single.modifiedText)
+                    DialogRow(L("Created:"), single.createdText)
+                    DialogRow(L("Modified:"), single.modifiedText)
                     Divider().overlay(Win.divider).padding(.vertical, 8)
-                    DialogRow("Attributes:", attributes(single))
+                    DialogRow(L("Attributes:"), attributes(single))
                 }
             }
             .padding(.top, 12)
@@ -157,14 +160,14 @@ struct PropertiesDialog: View {
     private var details: some View {
         VStack(spacing: 0) {
             if let single {
-                DialogRow("Name:", single.name)
-                DialogRow("Item type:", single.typeName)
-                DialogRow("Folder path:", single.url.deletingLastPathComponent().path)
-                DialogRow("Full path:", single.url.path)
-                DialogRow("Date modified:", single.modifiedText)
-                DialogRow("Date created:", single.createdText)
-                DialogRow("Size:", FileItem.bytesText(single.size))
-                DialogRow("Owner:", NSUserName())
+                DialogRow(L("Name:"), single.name)
+                DialogRow(L("Item type:"), single.typeName)
+                DialogRow(L("Folder path:"), single.url.deletingLastPathComponent().path)
+                DialogRow(L("Full path:"), single.url.path)
+                DialogRow(L("Date modified:"), single.modifiedText)
+                DialogRow(L("Date created:"), single.createdText)
+                DialogRow(L("Size:"), FileItem.bytesText(single.size))
+                DialogRow(L("Owner:"), NSUserName())
             } else {
                 ForEach(items.prefix(30)) { i in
                     DialogRow(i.displayName, i.sizeText)
@@ -177,10 +180,10 @@ struct PropertiesDialog: View {
 
     private func attributes(_ item: FileItem) -> String {
         var a: [String] = []
-        if item.isHidden { a.append("Hidden") }
-        if !FileManager.default.isWritableFile(atPath: item.url.path) { a.append("Read-only") }
-        if item.isSymlink { a.append("Shortcut") }
-        return a.isEmpty ? "None" : a.joined(separator: ", ")
+        if item.isHidden { a.append(L("Hidden")) }
+        if !FileManager.default.isWritableFile(atPath: item.url.path) { a.append(L("Read-only")) }
+        if item.isSymlink { a.append(L("Shortcut")) }
+        return a.isEmpty ? L("None") : a.joined(separator: ", ")
     }
 
     private func computeSize() {
@@ -199,6 +202,7 @@ struct PropertiesDialog: View {
 }
 
 struct DialogRow: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let label: String
     let value: String
     init(_ label: String, _ value: String) { self.label = label; self.value = value }
@@ -221,13 +225,14 @@ struct DialogRow: View {
 // MARK: - Confirm delete
 
 struct ConfirmDeleteDialog: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let items: [FileItem]
     let permanent: Bool
     let onConfirm: () -> Void
     let onCancel: () -> Void
 
     var body: some View {
-        WinDialog(title: permanent ? "Delete File" : "Delete", width: 440, onClose: onCancel) {
+        WinDialog(title: permanent ? L("Delete File") : L("Delete"), width: 440, onClose: onCancel) {
             HStack(alignment: .top, spacing: 16) {
                 if let first = items.first { ItemIcon(item: first, size: 48) }
                 VStack(alignment: .leading, spacing: 8) {
@@ -237,7 +242,7 @@ struct ConfirmDeleteDialog: View {
                     if let f = items.first, items.count == 1 {
                         Text(f.displayName)
                             .font(Win.body(12, weight: .semibold)).foregroundStyle(Win.text)
-                        Text("\(f.typeName)\n\(f.sizeText.isEmpty ? "" : "Size: " + f.sizeText)\nDate modified: \(f.modifiedText)")
+                        Text(LF("{0}\n{1}\nDate modified: {2}", f.typeName, f.sizeText.isEmpty ? "" : L("Size: ") + f.sizeText, f.modifiedText))
                             .font(Win.body(11)).foregroundStyle(Win.textSecondary)
                     }
                 }
@@ -245,31 +250,32 @@ struct ConfirmDeleteDialog: View {
             }
             .padding(20)
         } footer: {
-            WinDialogButton(title: "Yes", primary: true, action: onConfirm)
-            WinDialogButton(title: "No", action: onCancel)
+            WinDialogButton(title: L("Yes"), primary: true, action: onConfirm)
+            WinDialogButton(title: L("No"), action: onCancel)
         }
     }
 
     private var message: String {
         if items.count == 1 {
             return permanent
-                ? "Are you sure you want to permanently delete this file?"
-                : "Are you sure you want to move this file to the Recycle Bin?"
+                ? L("Are you sure you want to permanently delete this file?")
+                : L("Are you sure you want to move this file to the Recycle Bin?")
         }
         return permanent
-            ? "Are you sure you want to permanently delete these \(items.count) items?"
-            : "Are you sure you want to move these \(items.count) items to the Recycle Bin?"
+            ? LF("Are you sure you want to permanently delete these {0} items?", items.count)
+            : LF("Are you sure you want to move these {0} items to the Recycle Bin?", items.count)
     }
 }
 
 // MARK: - Error
 
 struct ErrorDialog: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let message: String
     let onClose: () -> Void
 
     var body: some View {
-        WinDialog(title: "File Explorer", width: 420, onClose: onClose) {
+        WinDialog(title: L("File Explorer"), width: 420, onClose: onClose) {
             HStack(alignment: .top, spacing: 16) {
                 ZStack {
                     Circle().fill(Color(red: 0.77, green: 0.17, blue: 0.11)).frame(width: 34, height: 34)
@@ -282,7 +288,7 @@ struct ErrorDialog: View {
             }
             .padding(20)
         } footer: {
-            WinDialogButton(title: "OK", primary: true, action: onClose)
+            WinDialogButton(title: L("OK"), primary: true, action: onClose)
         }
     }
 }

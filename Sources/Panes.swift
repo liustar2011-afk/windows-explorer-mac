@@ -4,6 +4,7 @@ import AppKit
 // MARK: - Status bar
 
 struct StatusBar: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var prefs = Prefs.shared
     @ObservedObject private var transfers = TransferQueue.shared
@@ -39,16 +40,16 @@ struct StatusBar: View {
                 }
                 .buttonStyle(.plain)
                 .hoverFill(corner: 3)
-                .help("Show file transfers")
+                .help(L("Show file transfers"))
                 .padding(.trailing, 6)
             }
 
-            WinButton(tooltip: "Details view (Ctrl+Shift+6)",
+            WinButton(tooltip: L("Details view (Ctrl+Shift+6)"),
                       active: prefs.viewMode == .details, padding: 6, height: 22, corner: 3) {
                 prefs.viewMode = .details
             } content: { Glyph(icon: .listView, size: 14, color: Win.textSecondary, weight: 1.15) }
 
-            WinButton(tooltip: "Large icons view (Ctrl+Shift+2)",
+            WinButton(tooltip: L("Large icons view (Ctrl+Shift+2)"),
                       active: prefs.viewMode == .largeIcons, padding: 6, height: 22, corner: 3) {
                 prefs.viewMode = .largeIcons
             } content: { Glyph(icon: .gridView, size: 14, color: Win.textSecondary, weight: 1.15) }
@@ -62,6 +63,7 @@ struct StatusBar: View {
 
 /// The thin Fluent progress bar used in the status bar and transfer rows.
 struct ProgressTrack: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let fraction: Double
     var body: some View {
         GeometryReader { geo in
@@ -78,19 +80,20 @@ struct ProgressTrack: View {
 // MARK: - Transfers
 
 struct TransfersPanel: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var transfers = TransferQueue.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("File transfers")
+                Text(L("File transfers"))
                     .font(Win.body(13, weight: .semibold)).foregroundStyle(Win.text)
                 Spacer()
                 if transfers.jobs.contains(where: { !$0.isActive }) {
                     WinButton(padding: 8, height: 24) {
                         transfers.clearFinished()
                     } content: {
-                        Text("Clear finished").font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                        Text(L("Clear finished")).font(Win.body(11)).foregroundStyle(Win.textSecondary)
                     }
                 }
                 WinButton(padding: 6, height: 24) {
@@ -106,7 +109,7 @@ struct TransfersPanel: View {
             Divider().overlay(Win.divider)
 
             if transfers.jobs.isEmpty {
-                Text("Nothing is being copied or moved.")
+                Text(L("Nothing is being copied or moved."))
                     .font(Win.body(12)).foregroundStyle(Win.textTertiary)
                     .padding(16)
             } else {
@@ -128,14 +131,15 @@ struct TransfersPanel: View {
 }
 
 struct TransferRow: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let job: TransferJob
 
     private var statusText: String {
         switch job.state {
-        case .waiting: return "Waiting"
+        case .waiting: return L("Waiting")
         case .running: return job.rateText.isEmpty ? job.sizeText : "\(job.sizeText)  \(job.rateText)"
-        case .finished: return "Finished, \(job.filesTotal) item\(job.filesTotal == 1 ? "" : "s")"
-        case .cancelled: return "Cancelled"
+        case .finished: return LF("Finished, {0} item{1}", job.filesTotal, job.filesTotal == 1 ? "" : "s")
+        case .cancelled: return L("Cancelled")
         case .failed(let message): return message
         }
     }
@@ -147,7 +151,7 @@ struct TransferRow: View {
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text("\(job.kind.rawValue) to \(job.destination.map { Places.displayName(for: $0) } ?? "Recycle Bin")")
+                Text(LF("{0} to {1}", L(job.kind.rawValue), job.destination.map { Places.displayName(for: $0) } ?? L("Recycle Bin")))
                     .font(Win.body(12)).foregroundStyle(Win.text).lineLimit(1)
                 if job.isActive {
                     ProgressTrack(fraction: job.fraction).frame(height: 4)
@@ -159,7 +163,7 @@ struct TransferRow: View {
             }
 
             if job.isActive {
-                WinButton(tooltip: "Cancel", padding: 6, height: 24) {
+                WinButton(tooltip: L("Cancel"), padding: 6, height: 24) {
                     TransferQueue.shared.cancel(job.id)
                 } content: {
                     Glyph(icon: .tabClose, size: 11, color: Win.textSecondary, weight: 1.3)
@@ -178,6 +182,7 @@ struct TransferRow: View {
 // MARK: - Details pane
 
 struct DetailsPane: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
 
     private var item: FileItem? {
@@ -194,7 +199,7 @@ struct DetailsPane: View {
             } else if let item {
                 single(item)
             } else {
-                Text("Select a file to see its details.")
+                Text(L("Select a file to see its details."))
                     .font(Win.body(12)).foregroundStyle(Win.textTertiary)
                     .padding(16)
             }
@@ -209,11 +214,11 @@ struct DetailsPane: View {
         let sel = ex.selectedItems
         let bytes = sel.reduce(Int64(0)) { $0 + $1.size }
         return VStack(alignment: .leading, spacing: 14) {
-            Text("\(sel.count) items selected")
+            Text(LF("{0} items selected", sel.count))
                 .font(Win.body(14, weight: .semibold)).foregroundStyle(Win.text)
-            PropRow(label: "Total size", value: FileItem.friendlySize(bytes))
-            PropRow(label: "Folders", value: "\(sel.filter(\.isDirectory).count)")
-            PropRow(label: "Files", value: "\(sel.filter { !$0.isDirectory }.count)")
+            PropRow(label: L("Total size"), value: FileItem.friendlySize(bytes))
+            PropRow(label: L("Folders"), value: "\(sel.filter(\.isDirectory).count)")
+            PropRow(label: L("Files"), value: "\(sel.filter { !$0.isDirectory }.count)")
         }
         .padding(16)
     }
@@ -236,13 +241,13 @@ struct DetailsPane: View {
             Divider().overlay(Win.divider)
 
             VStack(alignment: .leading, spacing: 12) {
-                PropRow(label: "Date modified", value: item.modifiedText)
-                PropRow(label: "Date created", value: item.createdText)
+                PropRow(label: L("Date modified"), value: item.modifiedText)
+                PropRow(label: L("Date created"), value: item.createdText)
                 if !item.isDirectory {
-                    PropRow(label: "Size", value: FileItem.friendlySize(item.size))
+                    PropRow(label: L("Size"), value: FileItem.friendlySize(item.size))
                 }
-                PropRow(label: "Location", value: item.url.deletingLastPathComponent().path)
-                PropRow(label: "Attributes", value: item.isHidden ? "Hidden" : "A")
+                PropRow(label: L("Location"), value: item.url.deletingLastPathComponent().path)
+                PropRow(label: L("Attributes"), value: item.isHidden ? L("Hidden") : "A")
             }
             .padding(16)
         }
@@ -250,6 +255,7 @@ struct DetailsPane: View {
 }
 
 struct PropRow: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let label: String
     let value: String
     var body: some View {
@@ -264,6 +270,7 @@ struct PropRow: View {
 // MARK: - Preview pane
 
 struct PreviewPane: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @State private var image: NSImage?
 
@@ -276,11 +283,11 @@ struct PreviewPane: View {
                     Image(nsImage: image).resizable().aspectRatio(contentMode: .fit).padding(12)
                 } else {
                     ItemIcon(item: item, size: 96).padding(.top, 40)
-                    Text("No preview available")
+                    Text(L("No preview available"))
                         .font(Win.body(12)).foregroundStyle(Win.textTertiary).padding(.top, 8)
                 }
             } else {
-                Text("Select a file to preview.")
+                Text(L("Select a file to preview."))
                     .font(Win.body(12)).foregroundStyle(Win.textTertiary).padding(16)
             }
             Spacer(minLength: 0)

@@ -1,0 +1,1 @@
+App manually creates AppKit windows; registry previously retained closed windows. Session captures both panes, selected tabs, active side, split and frame. Missing folders fall back to Home. Development launch overrides bypass restoration.

@@ -51,6 +51,14 @@ final class RightClickRouter {
         return best
     }
 
+    /// Update selection on mouse-down without consuming the event: SwiftUI
+    /// must still receive it for double-click activation and file dragging.
+    func routeSelection(_ event: NSEvent) {
+        guard event.clickCount == 1,
+              let view = target(at: Self.rootPoint(event), in: event.window) else { return }
+        view.onMouseDown?(event)
+    }
+
     /// Handles a right-click. Returns true when it was consumed.
     @discardableResult
     func route(_ event: NSEvent) -> Bool {
@@ -68,10 +76,13 @@ final class RightClickRouter {
 }
 
 struct RightClickCatcher: NSViewRepresentable {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let onClick: (CGPoint) -> Void
+    var onMouseDown: ((NSEvent) -> Void)? = nil
 
     final class View: NSView {
         var onClick: ((CGPoint) -> Void)?
+        var onMouseDown: ((NSEvent) -> Void)?
         override var isFlipped: Bool { true }
 
         /// Invisible to hit-testing: the router dispatches to it explicitly.
@@ -94,23 +105,28 @@ struct RightClickCatcher: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> View {
-        let v = View(); v.onClick = onClick; return v
+        let v = View(); v.onClick = onClick; v.onMouseDown = onMouseDown; return v
     }
-    func updateNSView(_ nsView: View, context: Context) { nsView.onClick = onClick }
+    func updateNSView(_ nsView: View, context: Context) {
+        nsView.onClick = onClick
+        nsView.onMouseDown = onMouseDown
+    }
 }
 
 extension View {
     /// Marks this view as a context-menu target. The marker sits behind the
     /// content and is invisible to SwiftUI hit-testing, so taps, drags and
     /// drops keep working exactly as before.
-    func onRightClick(perform: @escaping (CGPoint) -> Void) -> some View {
-        background(RightClickCatcher(onClick: perform).allowsHitTesting(false))
+    func onRightClick(mouseDown: ((NSEvent) -> Void)? = nil,
+                      perform: @escaping (CGPoint) -> Void) -> some View {
+        background(RightClickCatcher(onClick: perform, onMouseDown: mouseDown).allowsHitTesting(false))
     }
 }
 
 // MARK: - Content area
 
 struct FileArea: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     @ObservedObject var prefs = Prefs.shared
@@ -174,12 +190,13 @@ extension Notification.Name {
 }
 
 struct EmptyFolderView: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     var body: some View {
         VStack(spacing: 6) {
-            Text(ex.tab.searching ? "No items match your search." : "This folder is empty.")
-                .font(Win.body(13))
+            Text(ex.tab.searching ? L("No items match your search.") : L("This folder is empty."))
+                .font(Win.body(14))
                 .foregroundStyle(Win.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -190,6 +207,7 @@ struct EmptyFolderView: View {
 // MARK: - Selection & activation helpers shared by every view mode
 
 struct ItemInteraction: ViewModifier {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     let item: FileItem
@@ -203,13 +221,21 @@ struct ItemInteraction: ViewModifier {
             .dropHighlight(dropTargeted)
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { ex.open(item) }
-            .onTapGesture(count: 1) {
+            // Controls inside a row retain SwiftUI's normal click handling.
+            .simultaneousGesture(TapGesture(count: 1).onEnded {
+                guard Prefs.shared.itemCheckBoxes || ex.tab.editing == item.id,
+                      (NSApp.currentEvent?.clickCount ?? 1) == 1 else { return }
                 let f = NSEvent.modifierFlags
                 ex.select(item,
                           extend: f.contains(.shift),
                           toggle: f.contains(.control) || f.contains(.command))
-            }
-            .onRightClick { p in
+            })
+            .onRightClick(mouseDown: { event in
+                guard !Prefs.shared.itemCheckBoxes, ex.tab.editing != item.id else { return }
+                let f = event.modifierFlags
+                ex.select(item, extend: f.contains(.shift),
+                          toggle: f.contains(.control) || f.contains(.command))
+            }) { p in
                 if !ex.tab.selection.contains(item.id) {
                     ex.select(item, extend: false, toggle: false)
                 }
@@ -236,6 +262,7 @@ struct ItemInteraction: ViewModifier {
 /// The accent wash and outline Explorer paints on whatever you are about to
 /// drop onto.
 struct DropHighlight: ViewModifier {
+    @ObservedObject private var interfaceSettings = Settings.shared
     static var forceOn = false
     let active: Bool
     var radius: CGFloat = 4
@@ -268,14 +295,15 @@ extension View {
 // MARK: - Details view
 
 struct DetailsView: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     @ObservedObject var prefs = Prefs.shared
 
-    @State private var nameWidth: CGFloat = 300
-    @State private var dateWidth: CGFloat = 150
-    @State private var typeWidth: CGFloat = 140
-    @State private var sizeWidth: CGFloat = 90
+    @AppStorage("details.nameWidth", store: Store.defaults) private var nameWidth: Double = 420
+    @AppStorage("details.dateWidth", store: Store.defaults) private var dateWidth: Double = 150
+    @AppStorage("details.typeWidth", store: Store.defaults) private var typeWidth: Double = 140
+    @AppStorage("details.sizeWidth", store: Store.defaults) private var sizeWidth: Double = 90
 
     private var rowHeight: CGFloat { prefs.compactMode ? 24 : 32 }
 
@@ -294,9 +322,10 @@ struct DetailsView: View {
             ScrollViewReader { proxy in
                 ScrollView(.vertical) {
                     LazyVStack(spacing: 0) {
-                        ForEach(ex.tab.items) { item in
+                        ForEach(Array(ex.tab.items.enumerated()), id: \.element.id) { index, item in
                             DetailsRow(ex: ex, menus: menus, item: item,
-                                       height: rowHeight, columns: columns)
+                                       height: rowHeight, columns: columns,
+                                       alternating: prefs.alternatingRowBackgrounds && index.isMultiple(of: 2) == false)
                                 .id(item.id)
                         }
                         Color.clear.frame(height: 40)
@@ -314,34 +343,37 @@ struct DetailsView: View {
 
     private func header(columns: DetailColumns) -> some View {
         HStack(spacing: 0) {
-            ColumnHeader(title: "Name", key: .name, width: $nameWidth,
+            ColumnHeader(title: L("Name"), key: .name, width: $nameWidth,
                          effective: columns.name, ex: ex, leading: 34)
             if columns.date != nil {
-                ColumnHeader(title: "Date modified", key: .modified, width: $dateWidth, ex: ex)
+                ColumnHeader(title: L("Date modified"), key: .modified, width: $dateWidth, ex: ex)
             }
             if columns.type != nil {
-                ColumnHeader(title: "Type", key: .type, width: $typeWidth, ex: ex)
+                ColumnHeader(title: L("Type"), key: .type, width: $typeWidth, ex: ex)
             }
             if columns.size != nil {
-                ColumnHeader(title: "Size", key: .size, width: $sizeWidth, ex: ex, trailing: true)
+                ColumnHeader(title: L("Size"), key: .size, width: $sizeWidth, ex: ex, trailing: true)
             }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 4)
         .frame(height: 28)
+        .coordinateSpace(name: "detailColumnHeader")
     }
 }
 
 struct ColumnHeader: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let title: String
     let key: SortKey
-    @Binding var width: CGFloat
+    @Binding var width: Double
     /// The width actually used for layout, which may be clamped to fit.
     var effective: CGFloat? = nil
     @ObservedObject var ex: Explorer
     var leading: CGFloat = 10
     var trailing: Bool = false
     @State private var hovering = false
+    @State private var dragStartWidth: Double?
     @ObservedObject private var prefs = Prefs.shared
 
     var body: some View {
@@ -350,7 +382,7 @@ struct ColumnHeader: View {
                 HStack(spacing: 0) {
                     if trailing { Spacer(minLength: 0) }
                     Text(title)
-                        .font(Win.body(13))
+                        .font(Win.body(14))
                         .foregroundStyle(Win.textSecondary)
                         .lineLimit(1)
                     if !trailing { Spacer(minLength: 0) }
@@ -380,8 +412,13 @@ struct ColumnHeader: View {
                 .overlay(Rectangle().fill(Win.divider).frame(width: 1))
                 .contentShape(Rectangle())
                 .onHover { NSCursor.resizeLeftRight.set(); if !$0 { NSCursor.arrow.set() } }
-                .gesture(DragGesture()
-                    .onChanged { g in width = max(60, width + g.translation.width / 12) })
+                .gesture(DragGesture(coordinateSpace: .named("detailColumnHeader"))
+                    .onChanged { g in
+                        if dragStartWidth == nil { dragStartWidth = Double(effective ?? CGFloat(width)) }
+                        width = max(key == .name ? Double(DetailColumns.minimumName) : 60,
+                                    dragStartWidth! + Double(g.translation.width))
+                    }
+                    .onEnded { _ in dragStartWidth = nil })
         }
     }
 }
@@ -423,11 +460,13 @@ struct DetailColumns: Equatable {
 }
 
 struct DetailsRow: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     let item: FileItem
     let height: CGFloat
     let columns: DetailColumns
+    var alternating = false
     @State private var hovering = false
     @ObservedObject private var prefs = Prefs.shared
 
@@ -449,7 +488,7 @@ struct DetailsRow: View {
                         .frame(height: 20)
                 } else {
                     Text(item.displayName)
-                        .font(Win.body(13))
+                        .font(Win.body(14))
                         .foregroundStyle(item.isHidden ? Win.textTertiary : Win.text)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -461,7 +500,7 @@ struct DetailsRow: View {
 
             if let width = columns.date {
                 Text(item.modifiedText)
-                    .font(Win.body(13)).foregroundStyle(Win.textSecondary)
+                    .font(Win.body(14)).foregroundStyle(Win.textSecondary)
                     .lineLimit(1)
                     .padding(.leading, 6)
                     .frame(width: width, alignment: .leading)
@@ -469,7 +508,7 @@ struct DetailsRow: View {
 
             if let width = columns.type {
                 Text(item.typeName)
-                    .font(Win.body(13)).foregroundStyle(Win.textSecondary)
+                    .font(Win.body(14)).foregroundStyle(Win.textSecondary)
                     .lineLimit(1)
                     .padding(.leading, 6)
                     .frame(width: width, alignment: .leading)
@@ -477,7 +516,7 @@ struct DetailsRow: View {
 
             if let width = columns.size {
                 Text(item.sizeText)
-                    .font(Win.body(13)).foregroundStyle(Win.textSecondary)
+                    .font(Win.body(14)).foregroundStyle(Win.textSecondary)
                     .lineLimit(1)
                     .padding(.trailing, 10)
                     .frame(width: width, alignment: .trailing)
@@ -489,20 +528,23 @@ struct DetailsRow: View {
         .background(
             WinRR(radius: 4).fill(
                 selected ? (hovering ? Win.selectedHover : Win.selected)
-                         : (hovering ? Win.subtleHover : .clear))
+                         : (hovering ? Win.fileRowHover : (alternating ? Win.alternatingRow : .clear)))
         )
+        .overlay(WinRR(radius: 4).stroke(
+            selected && ex.tab.lead == item.id ? Win.accent.opacity(0.65) : .clear, lineWidth: 1))
         .onHover { hovering = $0 }
         .itemInteraction(ex, menus, item)
     }
 }
 
 struct RenameField: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     let item: FileItem
     @State private var text: String = ""
 
     var body: some View {
-        WinField(text: $text, fontSize: 13,
+        WinField(text: $text, fontSize: 14,
                  selectStem: !item.isDirectory,
                  selectAll: item.isDirectory,
                  onCommit: { s in ex.commitRename(item, to: s) },
@@ -517,6 +559,7 @@ struct RenameField: View {
 // MARK: - Icon grid
 
 struct IconGridView: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     @ObservedObject var prefs = Prefs.shared
@@ -545,6 +588,7 @@ struct IconGridView: View {
 }
 
 struct IconCell: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     let item: FileItem
@@ -564,7 +608,7 @@ struct IconCell: View {
                 RenameField(ex: ex, item: item).frame(height: 20).padding(.horizontal, 4)
             } else {
                 Text(item.displayName)
-                    .font(Win.body(13))
+                    .font(Win.body(14))
                     .foregroundStyle(Win.text)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
@@ -589,6 +633,8 @@ struct IconCell: View {
                 .padding(6)
             }
         }
+        .overlay(WinRR(radius: 4).stroke(
+            selected && ex.tab.lead == item.id ? Win.accent.opacity(0.65) : .clear, lineWidth: 1))
         .onHover { hovering = $0 }
         .itemInteraction(ex, menus, item)
     }
@@ -597,6 +643,7 @@ struct IconCell: View {
 // MARK: - List view (columns flow top-to-bottom, as in Explorer)
 
 struct ListFlowView: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
 
@@ -626,6 +673,7 @@ struct ListFlowView: View {
 }
 
 struct SmallRow: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     let item: FileItem
@@ -641,7 +689,7 @@ struct SmallRow: View {
                 RenameField(ex: ex, item: item).frame(height: 18)
             } else {
                 Text(item.displayName)
-                    .font(Win.body(13)).foregroundStyle(Win.text)
+                    .font(Win.body(14)).foregroundStyle(Win.text)
                     .lineLimit(1).truncationMode(.tail)
             }
             Spacer(minLength: 0)
@@ -649,6 +697,8 @@ struct SmallRow: View {
         .padding(.horizontal, 6)
         .frame(width: width, height: height)
         .background(WinRR(radius: 4).fill(selected ? Win.selected : (hovering ? Win.subtleHover : .clear)))
+        .overlay(WinRR(radius: 4).stroke(
+            selected && ex.tab.lead == item.id ? Win.accent.opacity(0.65) : .clear, lineWidth: 1))
         .onHover { hovering = $0 }
         .itemInteraction(ex, menus, item)
     }
@@ -657,6 +707,7 @@ struct SmallRow: View {
 // MARK: - Tiles / Content
 
 struct TilesView: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     let mode: ViewMode
@@ -686,6 +737,7 @@ struct TilesView: View {
 }
 
 struct TileCell: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     let item: FileItem
@@ -699,11 +751,11 @@ struct TileCell: View {
                 if ex.tab.editing == item.id {
                     RenameField(ex: ex, item: item).frame(height: 20)
                 } else {
-                    Text(item.displayName).font(Win.body(13)).foregroundStyle(Win.text).lineLimit(1)
+                    Text(item.displayName).font(Win.body(14)).foregroundStyle(Win.text).lineLimit(1)
                 }
-                Text(item.typeName).font(Win.body(12)).foregroundStyle(Win.textSecondary).lineLimit(1)
+                Text(item.typeName).font(Win.body(13)).foregroundStyle(Win.textSecondary).lineLimit(1)
                 if !item.sizeText.isEmpty {
-                    Text(item.sizeText).font(Win.body(12)).foregroundStyle(Win.textTertiary)
+                    Text(item.sizeText).font(Win.body(13)).foregroundStyle(Win.textTertiary)
                 }
             }
             Spacer(minLength: 0)
@@ -711,12 +763,15 @@ struct TileCell: View {
         .padding(8)
         .frame(height: 72)
         .background(WinRR(radius: 4).fill(selected ? Win.selected : (hovering ? Win.subtleHover : .clear)))
+        .overlay(WinRR(radius: 4).stroke(
+            selected && ex.tab.lead == item.id ? Win.accent.opacity(0.65) : .clear, lineWidth: 1))
         .onHover { hovering = $0 }
         .itemInteraction(ex, menus, item)
     }
 }
 
 struct ContentRow: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     let item: FileItem
@@ -730,16 +785,18 @@ struct ContentRow: View {
                 if ex.tab.editing == item.id {
                     RenameField(ex: ex, item: item).frame(height: 20)
                 } else {
-                    Text(item.displayName).font(Win.body(13)).foregroundStyle(Win.text).lineLimit(1)
+                    Text(item.displayName).font(Win.body(14)).foregroundStyle(Win.text).lineLimit(1)
                 }
-                Text(item.modifiedText).font(Win.body(12)).foregroundStyle(Win.textSecondary)
+                Text(item.modifiedText).font(Win.body(13)).foregroundStyle(Win.textSecondary)
             }
             Spacer(minLength: 0)
-            Text(item.sizeText).font(Win.body(12)).foregroundStyle(Win.textSecondary)
+            Text(item.sizeText).font(Win.body(13)).foregroundStyle(Win.textSecondary)
         }
         .padding(.horizontal, 10)
         .frame(height: 56)
         .background(WinRR(radius: 4).fill(selected ? Win.selected : (hovering ? Win.subtleHover : .clear)))
+        .overlay(WinRR(radius: 4).stroke(
+            selected && ex.tab.lead == item.id ? Win.accent.opacity(0.65) : .clear, lineWidth: 1))
         .onHover { hovering = $0 }
         .itemInteraction(ex, menus, item)
     }

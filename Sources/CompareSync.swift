@@ -95,6 +95,7 @@ enum FolderCompare {
 // MARK: - Dialog
 
 struct CompareDialog: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var model: WindowModel
     var maxHeight: CGFloat = 340
     let onClose: () -> Void
@@ -117,20 +118,20 @@ struct CompareDialog: View {
     }
 
     var body: some View {
-        WinDialog(title: "Compare and sync folders", width: 680, onClose: onClose) {
+        WinDialog(title: L("Compare and sync folders"), width: 680, onClose: onClose) {
             VStack(alignment: .leading, spacing: 0) {
                 folderPickers
                 Divider().overlay(Win.divider)
                 results
             }
         } footer: {
-            WinDialogButton(title: "Copy right", enabled: canSync) {
+            WinDialogButton(title: L("Copy right"), enabled: canSync) {
                 sync(fromLeft: true)
             }
-            WinDialogButton(title: "Copy left", enabled: canSync) {
+            WinDialogButton(title: L("Copy left"), enabled: canSync) {
                 sync(fromLeft: false)
             }
-            WinDialogButton(title: "Close", primary: true, action: onClose)
+            WinDialogButton(title: L("Close"), primary: true, action: onClose)
         }
         .onAppear {
             leftURL = model.left.currentDirectory
@@ -144,21 +145,21 @@ struct CompareDialog: View {
 
     private var folderPickers: some View {
         VStack(spacing: 10) {
-            FolderPickerRow(title: "Left", url: $leftURL)
-            FolderPickerRow(title: "Right", url: $rightURL)
+            FolderPickerRow(title: L("Left"), url: $leftURL)
+            FolderPickerRow(title: L("Right"), url: $rightURL)
             HStack(spacing: 12) {
-                WinDialogButton(title: scanning ? "Comparing…" : "Compare",
+                WinDialogButton(title: scanning ? L("Comparing…") : L("Compare"),
                                 primary: true,
                                 enabled: leftURL != nil && rightURL != nil && !scanning) {
                     compare()
                 }
                 HStack(spacing: 7) {
                     WinCheckbox(checked: differencesOnly) { differencesOnly.toggle() }
-                    Text("Differences only").font(Win.body(12)).foregroundStyle(Win.text)
+                    Text(L("Differences only")).font(Win.body(12)).foregroundStyle(Win.text)
                 }
                 Spacer()
                 if scanned {
-                    Text("\(counts.left) only left · \(counts.right) only right · \(counts.diff) differ")
+                    Text(LF("{0} only left · {1} only right · {2} differ", counts.left, counts.right, counts.diff))
                         .font(Win.body(11)).foregroundStyle(Win.textSecondary)
                 }
             }
@@ -169,12 +170,12 @@ struct CompareDialog: View {
     private var results: some View {
         Group {
             if !scanned {
-                Text("Pick two folders and compare them.")
+                Text(L("Pick two folders and compare them."))
                     .font(Win.body(12)).foregroundStyle(Win.textTertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(16)
             } else if shown.isEmpty {
-                Text(differencesOnly ? "The folders match." : "Both folders are empty.")
+                Text(differencesOnly ? L("The folders match.") : L("Both folders are empty."))
                     .font(Win.body(12)).foregroundStyle(Win.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(16)
@@ -189,7 +190,7 @@ struct CompareDialog: View {
                                     .font(Win.body(12)).foregroundStyle(Win.text)
                                     .lineLimit(1)
                                 Spacer(minLength: 12)
-                                Text(entry.status.rawValue)
+                                Text(L(entry.status.rawValue))
                                     .font(Win.body(11))
                                     .foregroundStyle(colour(entry.status))
                             }
@@ -267,6 +268,7 @@ struct CompareDialog: View {
 }
 
 struct FolderPickerRow: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let title: String
     @Binding var url: URL?
 
@@ -275,7 +277,7 @@ struct FolderPickerRow: View {
             Text(title)
                 .font(Win.body(12)).foregroundStyle(Win.textSecondary)
                 .frame(width: 44, alignment: .leading)
-            Text(url?.path ?? "Choose a folder")
+            Text(url?.path ?? L("Choose a folder"))
                 .font(Win.body(12))
                 .foregroundStyle(url == nil ? Win.textTertiary : Win.text)
                 .lineLimit(1).truncationMode(.head)
@@ -287,12 +289,12 @@ struct FolderPickerRow: View {
                 let panel = NSOpenPanel()
                 panel.canChooseDirectories = true
                 panel.canChooseFiles = false
-                panel.prompt = "Choose"
+                panel.prompt = L("Choose")
                 panel.begin { response in
                     if response == .OK, let picked = panel.url { url = picked }
                 }
             } content: {
-                Text("Browse").font(Win.body(11)).foregroundStyle(Win.text)
+                Text(L("Browse")).font(Win.body(11)).foregroundStyle(Win.text)
             }
             .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
         }

@@ -1,0 +1,7 @@
+"CFBundleDisplayName" = "文件资源管理器";
+"CFBundleName" = "文件资源管理器";
+"NSDesktopFolderUsageDescription" = "文件资源管理器需要访问桌面，以显示其中的文件。";
+"NSDocumentsFolderUsageDescription" = "文件资源管理器需要访问文档文件夹，以显示其中的文件。";
+"NSDownloadsFolderUsageDescription" = "文件资源管理器需要访问下载文件夹，以显示其中的文件。";
+"NSRemovableVolumesUsageDescription" = "文件资源管理器需要访问已连接的驱动器，以显示其中的文件。";
+"NSPhotoLibraryUsageDescription" = "文件资源管理器需要访问照片，以在图库中显示照片。";

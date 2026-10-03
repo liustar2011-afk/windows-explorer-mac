@@ -161,7 +161,7 @@ enum Archives {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
-        do { try process.run() } catch { return "Error: \(error.localizedDescription)" }
+        do { try process.run() } catch { return LF("Error: {0}", error.localizedDescription) }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         return String(data: data, encoding: .utf8) ?? ""

@@ -7,11 +7,11 @@ enum ContextMenus {
     static func iconRow(_ ex: Explorer) -> MenuIconRow {
         let hasSel = !ex.tab.selection.isEmpty
         return MenuIconRow(items: [
-            (.cut,    "Cut",    hasSel, { ex.cutSelection() }),
-            (.copy,   "Copy",   hasSel, { ex.copySelection() }),
-            (.rename, "Rename", ex.tab.selection.count == 1, { ex.beginRename() }),
-            (.share,  "Share",           hasSel, { share(ex) }),
-            (.delete, "Delete", hasSel, { ex.deleteSelection(permanent: false) }),
+            (.cut,    L("Cut"),    hasSel, { ex.cutSelection() }),
+            (.copy,   L("Copy"),   hasSel, { ex.copySelection() }),
+            (.rename, L("Rename"), ex.tab.selection.count == 1, { ex.beginRename() }),
+            (.share,  L("Share"),           hasSel, { share(ex) }),
+            (.delete, L("Delete"), hasSel, { ex.deleteSelection(permanent: false) }),
         ])
     }
 
@@ -21,63 +21,68 @@ enum ContextMenus {
         let isFolder = single && sel[0].isDirectory && !sel[0].isPackage
         var entries: [MenuEntry] = []
 
-        entries.append(MenuEntry(title: "Open", icon: .openWith, shortcut: "Enter") { ex.openSelection() })
+        entries.append(MenuEntry(title: L("Open"), icon: .openWith, shortcut: "Enter") { ex.openSelection() })
+        if single, ExternalVolumes.canEject(sel[0].url) {
+            entries.append(MenuEntry(title: L("Eject")) {
+                ExternalVolumes.eject(sel[0].url, explorer: ex)
+            })
+        }
         if isFolder {
-            entries.append(MenuEntry(title: "Open in new tab", icon: .plus) {
+            entries.append(MenuEntry(title: L("Open in new tab"), icon: .plus) {
                 ex.go(to: sel[0].url, newTab: true)
             })
-            entries.append(MenuEntry(title: "Open in new window") {
+            entries.append(MenuEntry(title: L("Open in new window")) {
                 AppState.shared.openNewWindow(at: .folder(sel[0].url))
             })
         } else if single {
-            entries.append(MenuEntry(title: "Open with", icon: .openWith, submenu: openWithMenu(sel[0])))
+            entries.append(MenuEntry(title: L("Open with"), icon: .openWith, submenu: openWithMenu(sel[0])))
         }
         if isFolder {
             let url = sel[0].url
             let settings = Settings.shared
             let pinned = settings.isPinned(url) && !settings.hiddenPlaces.contains(url.path)
             entries.append(.sep())
-            entries.append(MenuEntry(title: pinned ? "Unpin from Quick access" : "Pin to Quick access",
+            entries.append(MenuEntry(title: pinned ? L("Unpin from Quick access") : L("Pin to Quick access"),
                                      icon: pinned ? .unpin : .pin) {
                 if pinned { settings.unpin(url) } else { settings.pin(url) }
             })
-            entries.append(MenuEntry(title: "Change icon…", icon: .palette) {
+            entries.append(MenuEntry(title: L("Change icon…"), icon: .palette) {
                 ex.sheet = .folderIcon(sel[0])
             })
         }
         if sel.count > 1 {
             entries.append(.sep())
-            entries.append(MenuEntry(title: "Rename \(sel.count) items…", icon: .rename,
+            entries.append(MenuEntry(title: LF("Rename {0} items…", sel.count), icon: .rename,
                                      shortcut: Settings.shared.display(for: .batchRename)) {
                 ex.sheet = .batchRename(sel)
             })
         }
         if sel.contains(where: { Archives.isArchive($0.url) }) || ex.isInsideArchive {
-            entries.append(MenuEntry(title: "Extract here", icon: .compress) {
+            entries.append(MenuEntry(title: L("Extract here"), icon: .compress) {
                 ex.extractSelection()
             })
         }
         entries.append(.sep())
-        entries.append(MenuEntry(title: "Add to shelf", icon: .plus) {
+        entries.append(MenuEntry(title: L("Add to shelf"), icon: .plus) {
             Shelf.shared.add(sel.map(\.url))
             Prefs.shared.showShelf = true
         })
-        entries.append(MenuEntry(title: "Copy as path", icon: .copy,
+        entries.append(MenuEntry(title: L("Copy as path"), icon: .copy,
                                  shortcut: Settings.shared.display(for: .copyPath)) { ex.copyPath() })
-        entries.append(MenuEntry(title: "Compress to ZIP file", icon: .compress) { ex.zipSelection() })
-        entries.append(MenuEntry(title: "Create shortcut", icon: .link) {
+        entries.append(MenuEntry(title: L("Compress to ZIP file"), icon: .compress) { ex.zipSelection() })
+        entries.append(MenuEntry(title: L("Create shortcut"), icon: .link) {
             guard let dir = ex.currentDirectory else { return }
             Ops.makeShortcut(for: sel.map(\.url), in: dir); ex.reload()
         })
-        entries.append(MenuEntry(title: "Delete permanently", icon: .delete, shortcut: Settings.shared.display(for: .deletePermanent)) {
+        entries.append(MenuEntry(title: L("Delete permanently"), icon: .delete, shortcut: Settings.shared.display(for: .deletePermanent)) {
             ex.deleteSelection(permanent: true)
         })
         entries.append(.sep())
-        entries.append(MenuEntry(title: "Show in Finder", icon: .eye) {
+        entries.append(MenuEntry(title: L("Show in Finder"), icon: .eye) {
             NSWorkspace.shared.activateFileViewerSelecting(sel.map(\.url))
         })
         entries.append(.sep())
-        entries.append(MenuEntry(title: "Properties", icon: .properties, shortcut: Settings.shared.display(for: .properties)) {
+        entries.append(MenuEntry(title: L("Properties"), icon: .properties, shortcut: Settings.shared.display(for: .properties)) {
             ex.showProperties()
         })
         return entries
@@ -86,41 +91,41 @@ enum ContextMenus {
     static func background(_ ex: Explorer) -> [MenuEntry] {
         let prefs = Prefs.shared
         return [
-            MenuEntry(title: "View", icon: .view, submenu: ViewMode.allCases.map { m in
+            MenuEntry(title: L("View"), icon: .view, submenu: ViewMode.allCases.map { m in
                 MenuEntry(title: m.rawValue, radio: prefs.viewMode == m) { prefs.viewMode = m }
             }),
-            MenuEntry(title: "Sort by", icon: .sort, submenu: SortKey.allCases.map { k in
+            MenuEntry(title: L("Sort by"), icon: .sort, submenu: SortKey.allCases.map { k in
                 MenuEntry(title: k.rawValue, radio: prefs.sortKey == k) {
                     prefs.sortKey = k; ex.resort()
                 }
             } + [.sep(),
-                 MenuEntry(title: "Ascending", radio: prefs.sortAscending) { prefs.sortAscending = true; ex.resort() },
-                 MenuEntry(title: "Descending", radio: !prefs.sortAscending) { prefs.sortAscending = false; ex.resort() }]),
-            MenuEntry(title: "Refresh", icon: .refresh, shortcut: Settings.shared.display(for: .refresh)) { ex.reload() },
+                 MenuEntry(title: L("Ascending"), radio: prefs.sortAscending) { prefs.sortAscending = true; ex.resort() },
+                 MenuEntry(title: L("Descending"), radio: !prefs.sortAscending) { prefs.sortAscending = false; ex.resort() }]),
+            MenuEntry(title: L("Refresh"), icon: .refresh, shortcut: Settings.shared.display(for: .refresh)) { ex.reload() },
             .sep(),
-            MenuEntry(title: "Paste", icon: .paste, shortcut: Settings.shared.display(for: .paste),
+            MenuEntry(title: L("Paste"), icon: .paste, shortcut: Settings.shared.display(for: .paste),
                       enabled: Clipboard.hasFiles && ex.currentDirectory != nil) { ex.paste() },
-            MenuEntry(title: "Paste shortcut", icon: .link,
+            MenuEntry(title: L("Paste shortcut"), icon: .link,
                       enabled: Clipboard.hasFiles && ex.currentDirectory != nil) { ex.pasteShortcut() },
-            MenuEntry(title: "Undo", icon: .undo, shortcut: Settings.shared.display(for: .undo), enabled: !ex.undoStack.isEmpty) { ex.undo() },
+            MenuEntry(title: L("Undo"), icon: .undo, shortcut: Settings.shared.display(for: .undo), enabled: !ex.undoStack.isEmpty) { ex.undo() },
             .sep(),
-            MenuEntry(title: "Open in Terminal", icon: .terminal, enabled: ex.currentDirectory != nil) {
+            MenuEntry(title: L("Open in Terminal"), icon: .terminal, enabled: ex.currentDirectory != nil) {
                 guard let dir = ex.currentDirectory else { return }
                 NSWorkspace.shared.open([dir],
                     withApplicationAt: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"),
                     configuration: NSWorkspace.OpenConfiguration())
             },
             .sep(),
-            MenuEntry(title: "New", icon: .newItem, enabled: ex.currentDirectory != nil, submenu: [
-                MenuEntry(title: "Folder", icon: .newFolder, shortcut: Settings.shared.display(for: .newFolder)) { ex.newFolder() },
+            MenuEntry(title: L("New"), icon: .newItem, enabled: ex.currentDirectory != nil, submenu: [
+                MenuEntry(title: L("Folder"), icon: .newFolder, shortcut: Settings.shared.display(for: .newFolder)) { ex.newFolder() },
                 .sep(),
-                MenuEntry(title: "Text Document", icon: .document) { ex.newFile(named: "New Text Document.txt") },
-                MenuEntry(title: "Rich Text Document", icon: .document) { ex.newFile(named: "New Rich Text Document.rtf") },
+                MenuEntry(title: L("Text Document"), icon: .document) { ex.newFile(named: "New Text Document.txt") },
+                MenuEntry(title: L("Rich Text Document"), icon: .document) { ex.newFile(named: "New Rich Text Document.rtf") },
             ]),
             .sep(),
-            MenuEntry(title: "Properties", icon: .properties,
+            MenuEntry(title: L("Properties"), icon: .properties,
                       shortcut: Settings.shared.display(for: .properties)) { ex.showProperties() },
-            MenuEntry(title: "Settings", icon: .settings,
+            MenuEntry(title: L("Settings"), icon: .settings,
                       shortcut: Settings.shared.display(for: .openSettings)) { ex.sheet = .settings },
         ]
     }
@@ -133,7 +138,7 @@ enum ContextMenus {
                                         configuration: NSWorkspace.OpenConfiguration())
             }
         }
-        if entries.isEmpty { entries = [MenuEntry(title: "No apps available", enabled: false)] }
+        if entries.isEmpty { entries = [MenuEntry(title: L("No apps available"), enabled: false)] }
         return entries
     }
 
@@ -143,5 +148,40 @@ enum ContextMenus {
         NSSharingServicePicker(items: urls)
             .show(relativeTo: NSRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1),
                   of: view, preferredEdge: .minY)
+    }
+}
+
+
+/// Only mounted external/removable volume roots offer device ejection.
+enum ExternalVolumes {
+    static func canEject(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        guard path != "/",
+              FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil)?
+                .contains(where: { $0.standardizedFileURL.path == path }) == true,
+              let values = try? url.resourceValues(forKeys: [
+                .volumeIsInternalKey, .volumeIsLocalKey,
+                .volumeIsRemovableKey, .volumeIsEjectableKey
+              ]) else { return false }
+        return values.volumeIsRemovable == true || values.volumeIsEjectable == true
+            || (values.volumeIsInternal == false && values.volumeIsLocal == true)
+    }
+
+    static func eject(_ url: URL, explorer: Explorer) {
+        guard canEject(url) else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try NSWorkspace.shared.unmountAndEjectDevice(at: url)
+                DispatchQueue.main.async {
+                    AppState.shared.refreshAfterEjecting(url)
+                }
+            } catch {
+                let message = error.localizedDescription
+                DispatchQueue.main.async {
+                    explorer.sheet = .error(LF("Could not eject “{0}”.\n{1}",
+                        Places.displayName(for: url), message))
+                }
+            }
+        }
     }
 }

@@ -64,10 +64,10 @@ struct FileItem: Identifiable, Hashable {
 
     /// Matches the "Type" column wording Windows Explorer uses.
     var typeName: String {
-        if isDirectory && !isPackage { return "File folder" }
-        if ext.isEmpty { return "File" }
-        if let known = FileItem.knownTypes[ext.lowercased()] { return known }
-        return "\(ext.uppercased()) File"
+        if isDirectory && !isPackage { return L("File folder") }
+        if ext.isEmpty { return L("File") }
+        if let known = FileItem.knownTypes[ext.lowercased()] { return L(known) }
+        return LF("{0} File", ext.uppercased())
     }
 
     private static let knownTypes: [String: String] = [
@@ -98,13 +98,22 @@ struct FileItem: Identifiable, Hashable {
         return "\(FileItem.grouped.string(from: NSNumber(value: kb)) ?? "\(kb)") KB"
     }
 
-    var modifiedText: String { FileItem.winDate.string(from: modified) }
-    var createdText: String { FileItem.winDate.string(from: created) }
+    var modifiedText: String { FileItem.displayDate.string(from: modified) }
+    var createdText: String { FileItem.displayDate.string(from: created) }
 
     static let grouped: NumberFormatter = {
         let f = NumberFormatter(); f.numberStyle = .decimal; f.groupingSeparator = ","
         return f
     }()
+
+    private static let chineseDate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy/M/d HH:mm"
+        return formatter
+    }()
+
+    static var displayDate: DateFormatter { Localization.isChinese ? chineseDate : winDate }
 
     static let winDate: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "M/d/yyyy h:mm a"
@@ -114,7 +123,7 @@ struct FileItem: Identifiable, Hashable {
 
     /// Full byte count with grouping, as shown in Properties.
     static func bytesText(_ n: Int64) -> String {
-        (grouped.string(from: NSNumber(value: n)) ?? "\(n)") + " bytes"
+        (grouped.string(from: NSNumber(value: n)) ?? "\(n)") + L(" bytes")
     }
 
     /// "1.44 MB" style, as Windows shows above the byte count.
@@ -122,7 +131,7 @@ struct FileItem: Identifiable, Hashable {
         let units = ["bytes", "KB", "MB", "GB", "TB"]
         var v = Double(n), i = 0
         while v >= 1024 && i < units.count - 1 { v /= 1024; i += 1 }
-        if i == 0 { return "\(n) bytes" }
+        if i == 0 { return LF("{0} bytes", n) }
         return String(format: "%.2f %@", v, units[i])
     }
 }
@@ -217,12 +226,12 @@ enum Places {
     /// The folders Windows pins to Quick access out of the box.
     static var defaultPinned: [Place] {
         [
-            Place(id: "desktop", title: "Desktop", icon: .desktop, url: desktop, accent: .blue),
-            Place(id: "downloads", title: "Downloads", icon: .download, url: downloads, accent: .green),
-            Place(id: "documents", title: "Documents", icon: .document, url: documents, accent: .teal),
-            Place(id: "pictures", title: "Pictures", icon: .picture, url: pictures, accent: .blue),
-            Place(id: "music", title: "Music", icon: .music, url: music, accent: .orange),
-            Place(id: "videos", title: "Videos", icon: .video, url: videos, accent: .purple),
+            Place(id: "desktop", title: L("Desktop"), icon: .desktop, url: desktop, accent: .blue),
+            Place(id: "downloads", title: L("Downloads"), icon: .download, url: downloads, accent: .green),
+            Place(id: "documents", title: L("Documents"), icon: .document, url: documents, accent: .teal),
+            Place(id: "pictures", title: L("Pictures"), icon: .picture, url: pictures, accent: .blue),
+            Place(id: "music", title: L("Music"), icon: .music, url: music, accent: .orange),
+            Place(id: "videos", title: L("Videos"), icon: .video, url: videos, accent: .purple),
         ]
     }
 
@@ -260,23 +269,26 @@ enum Places {
 
     static var sidebar: [Place] {
         var list: [Place] = [
-            Place(id: "home", title: "Home", icon: .home, url: nil, accent: .orange, special: .home),
-            Place(id: "gallery", title: "Gallery", icon: .gallery, url: pictures, accent: .blue, special: .gallery),
+            Place(id: "home", title: L("Home"), icon: .home, url: nil, accent: .orange, special: .home),
+            Place(id: "gallery", title: L("Gallery"), icon: .gallery, url: pictures, accent: .blue, special: .gallery),
         ]
         if let od = oneDrive {
             list.append(Place(id: "onedrive", title: "OneDrive", icon: .cloud, url: od, accent: .blue))
         }
         list.append(contentsOf: quickAccess)
-        list.append(Place(id: "thispc", title: "This PC", icon: .thisPC, url: nil, accent: .blue, special: .thisPC))
-        list.append(Place(id: "network", title: "Network", icon: .network, url: URL(fileURLWithPath: "/Volumes"), accent: .neutral, special: .network))
+        list.append(Place(id: "thispc", title: L("This PC"), icon: .thisPC, url: nil, accent: .blue, special: .thisPC))
+        list.append(Place(id: "network", title: L("Network"), icon: .network, url: URL(fileURLWithPath: "/Volumes"), accent: .neutral, special: .network))
         return list
     }
 
     static func displayName(for url: URL) -> String {
         if url.path == home.path { return NSUserName() }
-        if url.path == "/" { return "Local Disk (C:)" }
-        if url.path == trash.path { return "Recycle Bin" }
-        if url.path == videos.path { return "Videos" }
+        if url.path == "/" { return L("Local Disk (C:)") }
+        if url.path == trash.path { return L("Recycle Bin") }
+        if url.path == videos.path { return L("Videos") }
+        let known: [(URL, String)] = [(desktop, "Desktop"), (downloads, "Downloads"),
+            (documents, "Documents"), (pictures, "Pictures"), (music, "Music")]
+        if let place = known.first(where: { $0.0.path == url.path }) { return L(place.1) }
         return url.lastPathComponent
     }
 
@@ -374,7 +386,7 @@ enum Loader {
 enum Store {
     static let defaults: UserDefaults = {
         let env = ProcessInfo.processInfo.environment
-        guard env["WINEXP_SELFTEST"] != nil || env["WINEXP_DEMO"] != nil else {
+        guard env["WINEXP_SELFTEST"] != nil || env["WINEXP_DEMO"] != nil || env["WINEXP_SNAPSHOT"] != nil || env["WINEXP_OPEN_REPORT"] != nil else {
             return .standard
         }
         let suite = "com.winexplorer.mac.scratch"
@@ -398,6 +410,7 @@ final class Prefs: ObservableObject {
     @Published var sortAscending: Bool { didSet { d.set(sortAscending, forKey: "sortAscending") } }
     @Published var groupBy: String { didSet { d.set(groupBy, forKey: "groupBy") } }
     @Published var itemCheckBoxes: Bool { didSet { d.set(itemCheckBoxes, forKey: "itemCheckBoxes") } }
+    @Published var alternatingRowBackgrounds: Bool { didSet { d.set(alternatingRowBackgrounds, forKey: "alternatingRowBackgrounds") } }
     @Published var compactMode: Bool { didSet { d.set(compactMode, forKey: "compactMode") } }
     @Published var showAccountStatus: Bool { didSet { d.set(showAccountStatus, forKey: "showAccountStatus") } }
     @Published var dualPane: Bool { didSet { d.set(dualPane, forKey: "dualPane") } }
@@ -409,7 +422,7 @@ final class Prefs: ObservableObject {
             "showNavPane": true, "showPreviewPane": false, "viewMode": ViewMode.details.rawValue,
             "sortKey": SortKey.name.rawValue, "sortAscending": true, "groupBy": "(None)",
             "itemCheckBoxes": false, "compactMode": false, "showAccountStatus": true,
-            "dualPane": false, "showShelf": false,
+            "dualPane": false, "showShelf": false, "alternatingRowBackgrounds": true,
         ])
         showHidden = d.bool(forKey: "showHidden")
         showExtensions = d.bool(forKey: "showExtensions")
@@ -421,6 +434,7 @@ final class Prefs: ObservableObject {
         sortAscending = d.bool(forKey: "sortAscending")
         groupBy = d.string(forKey: "groupBy") ?? "(None)"
         itemCheckBoxes = d.bool(forKey: "itemCheckBoxes")
+        alternatingRowBackgrounds = d.bool(forKey: "alternatingRowBackgrounds")
         compactMode = d.bool(forKey: "compactMode")
         showAccountStatus = d.bool(forKey: "showAccountStatus")
         dualPane = d.bool(forKey: "dualPane")

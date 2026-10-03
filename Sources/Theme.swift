@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-// Windows 11 (WinUI 3 / Fluent) color system.
+// Fluent-inspired surfaces, accents and typography for the native Mac interface.
 enum Win {
 
     // MARK: - Appearance
@@ -29,22 +29,22 @@ enum Win {
     // MARK: - Surfaces
 
     /// Mica-like tab strip behind the caption buttons.
-    static let tabStrip     = dyn(c(0x1A1A1A), c(0xE9E9E9))
+    static let tabStrip     = dyn(c(0x1C1D20), c(0xE8EBF0))
     /// The selected tab, which visually merges into the toolbar.
-    static let tabActive    = dyn(c(0x2D2D2D), c(0xFFFFFF))
+    static let tabActive    = dyn(c(0x2D3036), c(0xFFFFFF))
     static let tabHover     = dyn(c(0x272727), c(0xF2F2F2))
     /// Address-bar row + command bar.
-    static let chrome       = dyn(c(0x202020), c(0xF3F3F3))
-    static let sidebar      = dyn(c(0x202020), c(0xF3F3F3))
-    static let content      = dyn(c(0x202020), c(0xFFFFFF))
-    static let statusBar    = dyn(c(0x252525), c(0xF3F3F3))
+    static let chrome       = dyn(c(0x25272C), c(0xF4F6F9))
+    static let sidebar      = dyn(c(0x23252A), c(0xF1F3F7))
+    static let content      = dyn(c(0x1C1E22), c(0xFFFFFF))
+    static let statusBar    = dyn(c(0x23252A), c(0xF4F6F9))
     static let flyout       = dyn(c(0x2C2C2C), c(0xF9F9F9))
     static let dialog       = dyn(c(0x272727), c(0xF9F9F9))
 
     // MARK: - Controls
 
     /// Address bar / search box field fill.
-    static let field        = dyn(c(0x2B2B2B), c(0xFFFFFF))
+    static let field        = dyn(c(0x30333A), c(0xFFFFFF))
     static let fieldHover   = dyn(c(0x323232), c(0xFAFAFA))
     static let fieldFocus   = dyn(c(0x1F1F1F), c(0xFFFFFF))
     static let controlFill  = dyn(c(0xFFFFFF, 0.061), c(0xFFFFFF, 0.70))
@@ -52,8 +52,11 @@ enum Win {
     /// Subtle button states (toolbar buttons, list rows).
     static let subtleHover  = dyn(c(0xFFFFFF, 0.061), c(0x000000, 0.037))
     static let subtlePress  = dyn(c(0xFFFFFF, 0.042), c(0x000000, 0.024))
-    static let selected     = dyn(c(0xFFFFFF, 0.087), c(0x000000, 0.060))
-    static let selectedHover = dyn(c(0xFFFFFF, 0.11), c(0x000000, 0.086))
+    static let alternatingRow = dyn(c(0xFFFFFF, 0.045), c(0x000000, 0.028))
+    /// Distinct from alternating stripes while staying quieter than selection.
+    static let fileRowHover = dyn(c(0xFFFFFF, 0.10), c(0x000000, 0.07))
+    static var selected: Color { accent.opacity(isDark ? 0.18 : 0.10) }
+    static var selectedHover: Color { accent.opacity(isDark ? 0.24 : 0.16) }
 
     // MARK: - Strokes
 
@@ -92,24 +95,24 @@ enum Win {
     static let folderTab    = c(0xE0A100)
     static let danger       = dyn(c(0xFF99A4), c(0xC42B1C))
 
-    // MARK: - Metrics (device-independent points, matching Win11 at 100%)
+    // MARK: - Metrics (device-independent points)
 
     enum M {
         static let tabStripHeight: CGFloat = 40
         static let navBarHeight: CGFloat = 48
         static let commandBarHeight: CGFloat = 48
         static let statusBarHeight: CGFloat = 26
-        static let sidebarWidth: CGFloat = 170
+        static let sidebarWidth: CGFloat = 190
         static let rowHeight: CGFloat = 24
-        static let corner: CGFloat = 4
-        static let cardCorner: CGFloat = 7
+        static let corner: CGFloat = 6
+        static let cardCorner: CGFloat = 8
     }
 
-    // MARK: - Type ramp (Segoe UI Variable -> closest available on macOS)
+    // MARK: - Type ramp
 
-    /// Windows 11 body text is Segoe UI Variable Text 12pt (~14px).
-    static func body(_ size: CGFloat = 12, weight: Font.Weight = .regular) -> Font {
-        .custom(uiFontName, size: size).weight(weight)
+    /// System typography provides consistent Latin and Chinese font fallback.
+    static func body(_ size: CGFloat = 13, weight: Font.Weight = .regular) -> Font {
+        .system(size: size, weight: weight)
     }
 
     static let uiFontName: String = {

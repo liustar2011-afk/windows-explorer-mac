@@ -31,7 +31,7 @@ struct TransferJob: Identifiable {
 
     /// "12.4 MB of 300 MB", the way Explorer's copy dialog reads.
     var sizeText: String {
-        "\(FileItem.friendlySize(bytesDone)) of \(FileItem.friendlySize(bytesTotal))"
+        LF("{0} of {1}", FileItem.friendlySize(bytesDone), FileItem.friendlySize(bytesTotal))
     }
 
     var rateText: String {
@@ -40,13 +40,13 @@ struct TransferJob: Identifiable {
         guard elapsed > 0.6, bytesDone > 0 else { return "" }
         let perSecond = Double(bytesDone) / elapsed
         let remaining = Double(bytesTotal - bytesDone) / max(perSecond, 1)
-        return "\(FileItem.friendlySize(Int64(perSecond)))/s, \(TransferJob.timeText(remaining)) left"
+        return LF("{0}/s, {1} left", FileItem.friendlySize(Int64(perSecond)), TransferJob.timeText(remaining))
     }
 
     static func timeText(_ seconds: Double) -> String {
-        if seconds < 60 { return "\(Int(seconds.rounded())) seconds" }
-        if seconds < 3600 { return "\(Int((seconds / 60).rounded())) minutes" }
-        return String(format: "%.1f hours", seconds / 3600)
+        if seconds < 60 { return LF("{0} seconds", Int(seconds.rounded())) }
+        if seconds < 3600 { return LF("{0} minutes", Int((seconds / 60).rounded())) }
+        return String(format: L("%.1f hours"), seconds / 3600)
     }
 }
 
@@ -75,8 +75,8 @@ final class TransferQueue: ObservableObject {
     var summary: String {
         let running = active
         guard let first = running.first else { return "" }
-        if running.count > 1 { return "\(first.kind.rawValue) \(running.count) sets of items" }
-        return "\(first.kind.rawValue) \(first.filesDone) of \(first.filesTotal) items"
+        if running.count > 1 { return LF("{0} {1} sets of items", L(first.kind.rawValue), running.count) }
+        return LF("{0} {1} of {2} items", L(first.kind.rawValue), first.filesDone, first.filesTotal)
     }
 
     // MARK: Submitting work

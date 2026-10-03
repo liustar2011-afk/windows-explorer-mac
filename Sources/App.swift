@@ -3,10 +3,41 @@ import AppKit
 
 // MARK: - Window registry
 
-final class AppState {
+final class AppState: NSObject, NSWindowDelegate {
     static let shared = AppState()
     private var map: [ObjectIdentifier: WindowModel] = [:]
     private var windows: [NSWindow] = []
+
+    private var terminating = false
+
+    func saveSessionForTermination() {
+        saveSession()
+        terminating = true
+    }
+
+    private func saveSession() {
+        let saved = windows.compactMap { window -> SavedWindow? in
+            guard let model = model(for: window) else { return nil }
+            return SavedWindow(window: window, model: model)
+        }
+        // Keep the last window when closing it causes the application to quit.
+        if !saved.isEmpty { WindowSession.saved = saved }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        if !terminating && windows.count == 1 { saveSession() }
+        windows.removeAll { $0 === window }
+        map.removeValue(forKey: ObjectIdentifier(window))
+        if !terminating && !windows.isEmpty { saveSession() }
+    }
+
+    func restoreSession() -> Bool {
+        let saved = WindowSession.saved
+        guard !saved.isEmpty else { return false }
+        for state in saved { openNewWindow(restoring: state) }
+        return true
+    }
 
     func register(window: NSWindow, model: WindowModel) {
         map[ObjectIdentifier(window)] = model
@@ -26,8 +57,32 @@ final class AppState {
 
     var active: Explorer? { activeModel?.active }
 
+    func refreshAfterEjecting(_ volume: URL) {
+        let path = volume.standardizedFileURL.path
+        for model in map.values {
+            for explorer in [model.left, model.right].compactMap({ $0 }) {
+                if case .folder(let folder) = explorer.tab.location,
+                   folder.path == path || folder.path.hasPrefix(path + "/") {
+                    explorer.go(to: .thisPC)
+                } else if case .thisPC = explorer.tab.location {
+                    explorer.reload()
+                } else {
+                    explorer.objectWillChange.send()
+                }
+            }
+        }
+    }
+
+    func bringForward(_ model: WindowModel) {
+        if let window = windows.first(where: { map[ObjectIdentifier($0)] === model }) {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     @discardableResult
-    func openNewWindow(at location: Location = .home) -> NSWindow {
+    func openNewWindow(at location: Location = .home, restoring state: SavedWindow? = nil) -> NSWindow {
         // WINEXP_SIZE=1400x900 opens at a given size, for screenshots.
         var size = NSSize(width: 1135, height: 640)
         if let spec = ProcessInfo.processInfo.environment["WINEXP_SIZE"] {
@@ -38,7 +93,7 @@ final class AppState {
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
-        window.title = "File Explorer"
+        window.title = L("File Explorer")
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.standardWindowButton(.closeButton)?.isHidden = true
@@ -46,23 +101,33 @@ final class AppState {
         window.standardWindowButton(.zoomButton)?.isHidden = true
         window.isMovableByWindowBackground = false
         window.minSize = NSSize(width: 780, height: 480)
-        window.backgroundColor = NSColor(Win.chrome)
+        window.isOpaque = false
+        window.backgroundColor = .clear
 
-        let hosting = NSHostingView(rootView: ContentView(start: location))
+        let model = WindowModel(start: location)
+        state?.restore(into: model)
+        let hosting = NSHostingView(rootView: ContentView(model: model))
         // Draw right up into the title bar area and never let content resize
         // the window (which used to push the details pane off screen).
         hosting.safeAreaRegions = []
         hosting.sizingOptions = []
         window.contentView = hosting
         window.isReleasedWhenClosed = false
-        if let last = windows.last {
+        if let state {
+            let frame = NSRectFromString(state.frame)
+            if frame.width.isFinite && frame.height.isFinite && frame.origin.x.isFinite
+                && frame.origin.y.isFinite && frame.width >= 780 && frame.height >= 480 {
+                window.setFrame(frame, display: false)
+            } else { window.center() }
+        } else if let last = windows.last {
             window.setFrameOrigin(NSPoint(x: last.frame.origin.x + 28, y: last.frame.origin.y - 28))
         } else {
             window.center()
         }
         clampToScreen(window)
+        window.delegate = self
+        register(window: window, model: model)
         window.makeKeyAndOrderFront(nil)
-        windows.append(window)
         return window
     }
 }
@@ -87,6 +152,9 @@ final class ExplorerWindow: NSWindow {
 // MARK: - Delegate
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var launched = false
+    private var pendingURLs: [URL] = []
+    private var languageObserver: Any?
     private var keyMonitor: Any?
     private var scrollMonitor: Any?
     private var rightClickMonitor: Any?
@@ -94,11 +162,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
-        Settings.shared.applyTheme()
+        languageObserver = NotificationCenter.default.addObserver(forName: .interfaceLanguageChanged,
+            object: nil, queue: .main) { [weak self] _ in
+                self?.buildMenu()
+                for window in NSApp.windows { window.title = L("File Explorer") }
+            }
         let env = ProcessInfo.processInfo.environment
+        if let raw = env["WINEXP_THEME"], let theme = ThemeMode(rawValue: raw) {
+            Settings.shared.theme = theme
+        }
+        Settings.shared.applyTheme()
         if env["WINEXP_TEST"] == "drop" { DropHighlight.forceOn = true }
         let start: Location = env["WINEXP_START"].map { .folder(URL(fileURLWithPath: $0)) } ?? .home
-        AppState.shared.openNewWindow(at: start)
+        if env["WINEXP_START"] != nil || env["WINEXP_SELFTEST"] != nil
+            || env["WINEXP_DEMO"] != nil || env["WINEXP_SNAPSHOT"] != nil
+            || env["WINEXP_OPEN_REPORT"] != nil || !AppState.shared.restoreSession() {
+            AppState.shared.openNewWindow(at: start)
+        }
+        launched = true
+        let queued = pendingURLs
+        pendingURLs.removeAll()
+        receiveExternal(queued)
+        let arguments = ExternalTarget.commandLine(Array(ProcessInfo.processInfo.arguments.dropFirst()))
+        receiveExternal(arguments.map { $0.0 }, revealDirectory: arguments.first?.1 ?? false)
         installKeyHandler()
         NSApp.activate(ignoringOtherApps: true)
         if env["WINEXP_SELFTEST"] != nil {
@@ -109,6 +195,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let path = env["WINEXP_SNAPSHOT"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { self.snapshot(to: path) }
+        }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard launched else { pendingURLs.append(contentsOf: urls); return }
+        receiveExternal(urls)
+    }
+
+    private func receiveExternal(_ urls: [URL], revealDirectory: Bool = false) {
+        var targets: [ExternalTarget] = []
+        var failures: [String] = []
+        for url in urls {
+            do { targets.append(try ExternalTarget.parse(url, revealDirectory: revealDirectory)) }
+            catch { failures.append(error.localizedDescription) }
+        }
+        AppState.shared.openExternal(targets)
+        if let failure = failures.first { AppState.shared.active?.sheet = .error(failure) }
+        // Local integration-test report, opt-in only; never enabled in normal installs.
+        if !urls.isEmpty, let path = ProcessInfo.processInfo.environment["WINEXP_OPEN_REPORT"],
+           let explorer = AppState.shared.active {
+            let report: [String: Any] = ["directory": explorer.currentDirectory?.path ?? "",
+                "selection": explorer.selectedItems.map { $0.url.path }, "tabs": explorer.tabs.count,
+                "errors": failures]
+            if let data = try? JSONSerialization.data(withJSONObject: report) {
+                try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+            }
         }
     }
 
@@ -126,6 +238,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        AppState.shared.saveSessionForTermination()
+        return .terminateNow
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -140,29 +257,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About File Explorer", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: L("About File Explorer"), action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide File Explorer", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "Quit File Explorer", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: L("Hide File Explorer"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: L("Quit File Explorer"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         main.addItem(appItem)
 
         let editItem = NSMenuItem()
-        let editMenu = NSMenu(title: "Edit")
-        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-        editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        let editMenu = NSMenu(title: L("Edit"))
+        editMenu.addItem(withTitle: L("Undo"), action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: L("Redo"), action: Selector(("redo:")), keyEquivalent: "Z")
         editMenu.addItem(.separator())
-        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(withTitle: L("Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: L("Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: L("Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: L("Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = editMenu
         main.addItem(editItem)
 
         let windowItem = NSMenuItem()
-        let windowMenu = NSMenu(title: "Window")
-        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        let windowMenu = NSMenu(title: L("Window"))
+        windowMenu.addItem(withTitle: L("Minimize"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: L("Zoom"), action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         windowItem.submenu = windowMenu
         main.addItem(windowItem)
         NSApp.windowsMenu = windowMenu
@@ -184,7 +301,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         marqueeMonitor = NSEvent.addLocalMonitorForEvents(
             matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { event in
-            MarqueeController.shared.handle(event) ? nil : event
+            if event.type == .leftMouseDown {
+                RightClickRouter.shared.routeSelection(event)
+            }
+            return MarqueeController.shared.handle(event) ? nil : event
         }
         rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { event in
             RightClickRouter.shared.route(event) ? nil : event

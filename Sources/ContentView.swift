@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 
 struct ContentView: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @StateObject var model: WindowModel
     @StateObject private var menus = MenuController()
     @ObservedObject private var prefs = Prefs.shared
@@ -13,7 +14,11 @@ struct ContentView: View {
     private var ex: Explorer { model.active }
 
     init(start: Location = .home) {
-        _model = StateObject(wrappedValue: WindowModel(start: start))
+        self.init(model: WindowModel(start: start))
+    }
+
+    init(model: WindowModel) {
+        _model = StateObject(wrappedValue: model)
     }
 
     var body: some View {
@@ -72,9 +77,20 @@ struct ContentView: View {
                 DialogHost(ex: ex, model: model, maxHeight: max(200, geo.size.height - 170))
             }
             .coordinateSpace(name: "root")
-            .background(Win.chrome)
+            .background {
+                VStack(spacing: 0) {
+                    Color.clear.frame(height: Win.M.tabStripHeight)
+                    Win.chrome
+                }
+            }
             .ignoresSafeArea(.all, edges: .all)
             .onAppear { runTestHook() }
+            .environment(\.locale, Localization.locale)
+            .onReceive(NotificationCenter.default.publisher(for: .interfaceLanguageChanged)) { _ in
+                menus.close()
+                model.left.resort()
+                model.right?.resort()
+            }
             .onReceive(NotificationCenter.default.publisher(for: .demoShowMenu)) { _ in
                 guard AppState.shared.explorer(for: NSApp.keyWindow) === ex else { return }
                 menus.show(id: "demo", anchor: .zero, entries: ContextMenus.item(ex),
@@ -98,6 +114,11 @@ struct ContentView: View {
         guard let spec = ProcessInfo.processInfo.environment["WINEXP_TEST"] else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
             switch spec {
+            case "rows:on", "rows:off", "rows:selected":
+                Prefs.shared.alternatingRowBackgrounds = spec != "rows:off"
+                if spec == "rows:selected", ex.tab.items.count > 1 {
+                    ex.select(ex.tab.items[1], extend: false, toggle: false)
+                }
             case "menu:view":
                 menus.show(id: "view", anchor: CGRect(x: 400, y: 88, width: 90, height: 32),
                            entries: ContextMenus.background(ex), width: 250)
@@ -107,6 +128,14 @@ struct ContentView: View {
                            iconRow: ContextMenus.iconRow(ex), point: CGPoint(x: 480, y: 330))
             case "dialog:props":
                 if let first = ex.tab.items.first { ex.sheet = .properties([first]) }
+            case "language:zh":
+                ex.sheet = .settings
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    Settings.shared.language = .simplifiedChinese
+                }
+            case "settings:integration":
+                SettingsDialog.initialTab = 5
+                ex.sheet = .settings
             case "dialog:settings":
                 ex.sheet = .settings
             case "dual":
@@ -223,6 +252,7 @@ struct ContentView: View {
 
 /// Hosts the modal dialogs, observing whichever pane is active.
 struct DialogHost: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     @ObservedObject var model: WindowModel
     let maxHeight: CGFloat
@@ -271,6 +301,7 @@ struct DialogHost: View {
 
 /// One pane of the content area.
 struct PaneView: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var model: WindowModel
     @ObservedObject var ex: Explorer
     let side: PaneSide
@@ -279,35 +310,41 @@ struct PaneView: View {
     private var isActive: Bool { model.activeSide == side }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Glyph(icon: ex.tab.location.icon, size: 13,
-                      color: isActive ? Win.accent : Win.textTertiary, weight: 1.2)
-                Text(ex.tab.location.title)
-                    .font(Win.body(11, weight: isActive ? .semibold : .regular))
-                    .foregroundStyle(isActive ? Win.text : Win.textSecondary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Text("\(ex.tab.items.count) items")
-                    .font(Win.body(11)).foregroundStyle(Win.textTertiary)
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 24)
-            .background(isActive ? Win.selected : Color.clear)
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Glyph(icon: ex.tab.location.icon, size: 13,
+                          color: isActive ? Win.accent : Win.textTertiary, weight: 1.2)
+                    Text(ex.tab.location.displayTitle)
+                        .font(Win.body(11, weight: isActive ? .semibold : .regular))
+                        .foregroundStyle(isActive ? Win.text : Win.textSecondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text(LF("{0} items", ex.displayedItemCount))
+                        .font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .layoutPriority(1)
+                }
+                .padding(.horizontal, 10)
+                .frame(width: geometry.size.width, height: 24)
+                .background(isActive ? Win.selected : Color.clear)
 
-            FileArea(ex: ex, menus: menus)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                FileArea(ex: ex, menus: menus)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
+            .overlay(alignment: .top) {
+                Rectangle().fill(isActive ? Win.accent : Color.clear).frame(height: 2)
+            }
+            .contentShape(Rectangle())
+            .simultaneousGesture(TapGesture().onEnded { model.activate(side) })
         }
-        .clipped()
-        .overlay(alignment: .top) {
-            Rectangle().fill(isActive ? Win.accent : Color.clear).frame(height: 2)
-        }
-        .contentShape(Rectangle())
-        .simultaneousGesture(TapGesture().onEnded { model.activate(side) })
     }
 }
 
 struct PaneDivider: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var model: WindowModel
     let available: CGFloat
     @State private var hovering = false
@@ -341,6 +378,7 @@ extension Notification.Name {
 // MARK: - Split handle
 
 struct SplitHandle: View {
+    @ObservedObject private var interfaceSettings = Settings.shared
     @Binding var width: CGFloat
     let min: CGFloat
     let max: CGFloat
@@ -368,6 +406,7 @@ struct SplitHandle: View {
 // MARK: - Window access from SwiftUI
 
 struct WindowAccessor: NSViewRepresentable {
+    @ObservedObject private var interfaceSettings = Settings.shared
     let onWindow: (NSWindow) -> Void
     func makeNSView(context: Context) -> NSView {
         let v = NSView()
