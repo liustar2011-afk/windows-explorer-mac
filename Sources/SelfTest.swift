@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 /// Exercises the key bindings and file operations against a throwaway folder.
 /// Run with WINEXP_SELFTEST=1; the app prints results and exits.
@@ -221,7 +222,7 @@ enum SelfTest {
                 check("Ctrl+Z undoes a queued move",
                       fm.fileExists(atPath: root.appendingPathComponent("beta.txt").path))
                 checkCustomCommand(ex: ex, root: root) {
-                    checkTransfers(root: root, sub: sub) { finish() }
+                    checkTransfers(root: root, sub: sub) { checkAuditRegressions { finish() } }
                 }
             }
             }
@@ -294,6 +295,238 @@ enum SelfTest {
     }
 
     /// User-defined commands run a script with the selection in the environment.
+    /// Reproductions from the full-repository correctness review. Every write
+    /// is confined to owned scratch paths; a second volume is opt-in.
+    private static func checkAuditRegressions(done: @escaping () -> Void) {
+        let fm = FileManager.default
+        let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("winexp-regressions-" + UUID().uuidString)
+        func directory(_ name: String) -> URL {
+            let url = root.appendingPathComponent(name)
+            try! fm.createDirectory(at: url, withIntermediateDirectories: true)
+            return url
+        }
+        func write(_ parent: URL, _ name: String, _ text: String = "payload") -> URL {
+            let url = parent.appendingPathComponent(name)
+            try! Data(text.utf8).write(to: url)
+            return url
+        }
+        let source = directory("source"), target = directory("target"), other = directory("other")
+        let executable = write(source, "run.sh", "#!/bin/sh\nexit 0\n")
+        try! fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        let link = source.appendingPathComponent("link")
+        try! fm.createSymbolicLink(atPath: link.path, withDestinationPath: "run.sh")
+        let dangling = source.appendingPathComponent("dangling")
+        try! fm.createSymbolicLink(atPath: dangling.path, withDestinationPath: "missing.txt")
+        let package = directory("source/Test.app")
+        let packageExecutable = write(package, "executable")
+        try! fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: packageExecutable.path)
+
+        let tabs = Explorer()
+        tabs.go(to: source); tabs.openTab(.folder(target)); tabs.openTab(.folder(other))
+        tabs.selectTab(1)
+        let activeID = tabs.tab.id
+        tabs.closeTab(0)
+        check("closing an earlier tab preserves the active tab identity", tabs.tab.id == activeID)
+
+        let modal = Explorer()
+        modal.go(to: source)
+        modal.select(modal.tab.items.first { $0.name == "run.sh" }!, extend: false, toggle: false)
+        modal.sheet = .properties(modal.selectedItems)
+        sendCode(modal, 120)
+        check("modal dialogs block background rename shortcuts", modal.tab.editing == nil)
+        sendCode(modal, 117)
+        check("modal dialogs block background deletion", fm.fileExists(atPath: executable.path))
+        sendCode(modal, 53)
+        check("Escape dismisses the active dialog", modal.sheet == nil)
+
+        let history = Explorer()
+        history.go(to: target)
+        history.newFile(named: "extensionless", contents: Data("original contents".utf8))
+        history.tab.editing = nil
+        history.undo(); history.redo()
+        let extensionless = target.appendingPathComponent("extensionless")
+        check("redo restores an extensionless file and its content",
+              (try? Data(contentsOf: extensionless)) == Data("original contents".utf8))
+        history.undo(); history.redo()
+        check("creation supports repeated undo and redo",
+              (try? Data(contentsOf: extensionless)) == Data("original contents".utf8))
+        let dottedFolder = directory("target/folder.with.dot")
+        _ = write(dottedFolder, "child.txt")
+        history.undoStack.append(.create(url: dottedFolder))
+        history.undo(); history.redo()
+        check("redo restores a dotted folder and its children",
+              fm.fileExists(atPath: dottedFolder.appendingPathComponent("child.txt").path))
+
+        let first = write(target, "first.txt")
+        let renamed = target.appendingPathComponent("renamed.txt")
+        do {
+            try Ops.movePairs([(first, renamed), (target.appendingPathComponent("missing.txt"), target.appendingPathComponent("second.txt"))])
+            check("failed batch rename reports failure", false)
+        } catch {
+            check("failed batch rename rolls back completed names",
+                  fm.fileExists(atPath: first.path) && !fm.fileExists(atPath: renamed.path))
+        }
+
+        let archiveFolder = directory("archive")
+        let names = ["two  spaces.txt", "  leading.txt", "arrow -> name.txt"]
+        let archiveFiles = names.map { write(archiveFolder, $0) }
+        Ops.zip(archiveFiles, in: archiveFolder)
+        let archive = archiveFolder.appendingPathComponent("Archive.zip")
+        let listed = Set(Archives.children(of: archive, at: "").map(\.name))
+        check("archive names retain repeated spaces, leading spaces and arrows", listed == Set(names))
+        let extracted = directory("extracted")
+        let archiveError = Archives.extract(archive, entries: names, to: extracted)
+        check("archive entries with preserved names can be extracted",
+              archiveError == nil && names.allSatisfy { fm.fileExists(atPath: extracted.appendingPathComponent($0).path) })
+
+        let left = directory("left"), right = directory("right")
+        let leaf = directory("left/a/b")
+        _ = write(leaf, "payload.txt")
+        _ = write(left, "replace.txt", "new content")
+        _ = write(right, "replace.txt", "old")
+        let comparison = FolderComparison(left: left, right: right, entries: FolderCompare.run(left: left, right: right))
+        check("comparison is invalid for a changed folder pair", !comparison.matches(left: left, right: other))
+        let plan = FolderSync.plan(comparison, fromLeft: true)
+        check("sync plans only ancestor directories and independent files",
+              plan.count == 2 && plan.filter { $0.source.lastPathComponent == "a" }.count == 1)
+        try! FolderSync.enqueue(plan)
+        afterTransfers {
+            check("nested sync creates one tree without duplicate folders",
+                  fm.fileExists(atPath: right.appendingPathComponent("a/b/payload.txt").path)
+                  && !fm.fileExists(atPath: right.appendingPathComponent("a (2)").path))
+            check("sync replaces a differing file after its copy succeeds",
+                  (try? Data(contentsOf: right.appendingPathComponent("replace.txt"))) == Data("new content".utf8))
+
+            let queue = TransferQueue.shared
+            queue.enqueue(kind: .copy, sources: [executable, link, dangling, package], to: target) { job in
+                check("copies of regular files, packages and links finish", job.state == .finished)
+                check("package and link copy progress counts every copied entry", job.filesDone == job.filesTotal)
+                let copiedExecutable = target.appendingPathComponent("run.sh")
+                check("copy preserves executable permissions",
+                      (try? fm.attributesOfItem(atPath: copiedExecutable.path)[.posixPermissions] as? Int) == 0o755)
+                check("copy preserves relative symbolic links",
+                      (try? fm.destinationOfSymbolicLink(atPath: target.appendingPathComponent("link").path)) == "run.sh")
+                check("copy preserves dangling symbolic links",
+                      (try? fm.destinationOfSymbolicLink(atPath: target.appendingPathComponent("dangling").path)) == "missing.txt")
+                check("copy preserves executable files inside packages",
+                      (try? fm.attributesOfItem(atPath: target.appendingPathComponent("Test.app/executable").path)[.posixPermissions] as? Int) == 0o755)
+                history.undoStack.append(.copy(created: job.created))
+                history.undo(); history.redo()
+                check("redo restores copied bytes and link identities",
+                      (try? Data(contentsOf: copiedExecutable)) == (try? Data(contentsOf: executable))
+                      && (try? fm.destinationOfSymbolicLink(atPath: target.appendingPathComponent("link").path)) == "run.sh")
+                history.undo(); history.redo()
+                check("copy supports repeated undo and redo", fm.fileExists(atPath: copiedExecutable.path))
+
+                let descendant = directory("source/inside")
+                let descendantAlias = other.appendingPathComponent("inside-alias")
+                try! fm.createSymbolicLink(at: descendantAlias, withDestinationURL: descendant)
+                do {
+                    try Transfers.validate([source], destination: descendantAlias)
+                    check("directory aliases cannot bypass descendant validation", false)
+                } catch { check("directory aliases cannot bypass descendant validation", true) }
+                let destinationAlias = other.appendingPathComponent("target-alias")
+                try! fm.createSymbolicLink(at: destinationAlias, withDestinationURL: target)
+                do {
+                    try Transfers.validate([executable], destination: destinationAlias)
+                    check("valid destination directory aliases remain supported", true)
+                } catch { check("valid destination directory aliases remain supported", false) }
+                queue.enqueue(kind: .copy, sources: [source], to: descendant) { invalid in
+                    if case .failed = invalid.state {
+                        check("copy into a descendant is rejected before recursion", true)
+                    } else { check("copy into a descendant is rejected before recursion", false) }
+                    check("rejected descendant copies leave no recursive destination",
+                          !fm.fileExists(atPath: descendant.appendingPathComponent("source").path))
+
+                    let delivered = write(source, "delivered.txt")
+                    _ = write(other, "delivered.txt", "unrelated")
+                    _ = write(other, "keep.txt")
+                    let explorer = Explorer()
+                    explorer.go(to: target)
+                    explorer.transfer(kind: .copy, sources: [delivered], to: target)
+                    explorer.openTab(.folder(other))
+                    explorer.select(explorer.tab.items.first { $0.name == "keep.txt" }!, extend: false, toggle: false)
+                    afterTransfers {
+                        check("transfer completion cannot select a different tab's same-named file",
+                              explorer.selectedItems.map(\.name) == ["keep.txt"])
+                        let linkExplorer = Explorer()
+                        linkExplorer.go(to: target)
+                        linkExplorer.transfer(kind: .copy, sources: [link], to: target)
+                        afterTransfers {
+                            check("copy selects the new symlink without selecting its target or other links",
+                                  linkExplorer.selectedItems.map(\.name) == ["link (2)"])
+                            let search = Explorer()
+                            search.go(to: source)
+                            search.updateSearch("run.sh")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                                check("regression search finds its intended result",
+                                      search.tab.searching && search.tab.items.map(\.name) == ["run.sh"])
+                                search.openTab(.folder(other)); search.selectTab(0)
+                                check("returning to a search tab retains matching results",
+                                      search.tab.searching && search.tab.items.map(\.name) == ["run.sh"])
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                                    check("search refresh stays scoped to its tab and query",
+                                          search.tab.items.map(\.name) == ["run.sh"])
+                                    search.go(to: other)
+                                    search.updateSearch("delivered")
+                                    search.updateSearch("keep")
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                                        check("superseded search results cannot overwrite the latest query",
+                                              search.tab.items.map(\.name) == ["keep.txt"])
+                                        checkCancelledTransfer(root: root) {
+                                            try? fm.removeItem(at: root)
+                                            done()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static func checkCancelledTransfer(root: URL, done: @escaping () -> Void) {
+        let fm = FileManager.default
+        let secondVolume = ProcessInfo.processInfo.environment["WINEXP_CROSS_VOLUME_TEST_ROOT"].map {
+            URL(fileURLWithPath: $0).appendingPathComponent(".winexp-regression-" + UUID().uuidString)
+        }
+        let sourceFolder = secondVolume ?? root.appendingPathComponent("cancel-source")
+        let target = root.appendingPathComponent("cancel-target")
+        try! fm.createDirectory(at: sourceFolder, withIntermediateDirectories: true)
+        try! fm.createDirectory(at: target, withIntermediateDirectories: true)
+        let source = sourceFolder.appendingPathComponent("large.bin")
+        fm.createFile(atPath: source.path, contents: nil)
+        let handle = try! FileHandle(forWritingTo: source)
+        let size: UInt64 = 128 * 1024 * 1024
+        try! handle.truncate(atOffset: size)
+        try! handle.close()
+        if secondVolume != nil {
+            check("cancellation regression uses two real volumes", !Transfers.sameVolume(source, target))
+        }
+        let queue = TransferQueue.shared
+        var observation: AnyCancellable?
+        queue.enqueue(kind: secondVolume == nil ? .copy : .move, sources: [source], to: target) { job in
+            observation?.cancel()
+            observation = nil
+            check("cancelling an in-progress streamed transfer reports cancellation", job.state == .cancelled)
+            check("cancelled transfer preserves the entire original",
+                  (try? fm.attributesOfItem(atPath: source.path)[.size] as? UInt64) == size)
+            check("cancelled transfer exposes no partial destination",
+                  !fm.fileExists(atPath: target.appendingPathComponent("large.bin").path))
+            check("cancelled transfer cleans up staging directories",
+                  (try? fm.contentsOfDirectory(atPath: target.path))?.isEmpty == true)
+            if secondVolume != nil { try? fm.removeItem(at: sourceFolder) }
+            done()
+        }
+        let id = queue.jobs.last!.id
+        observation = queue.$jobs.sink { jobs in
+            if let job = jobs.first(where: { $0.id == id }), job.state == .running,
+               job.bytesDone >= 4 * 1024 * 1024 { queue.cancel(id) }
+        }
+    }
+
     private static func checkCustomCommand(ex: Explorer, root: URL, then done: @escaping () -> Void) {
         ex.go(to: root)
         guard let item = ex.tab.items.first(where: { !$0.isDirectory }) else { done(); return }
@@ -585,9 +818,9 @@ enum SelfTest {
         let owner = NSObject()
         router.setContentFrame(CGRect(x: 0, y: 0, width: 400, height: 300), for: owner)
 
-        func rightClick(at point: CGPoint) -> NSEvent? {
+        func rightClick(at point: CGPoint, type: NSEvent.EventType = .rightMouseDown) -> NSEvent? {
             // NSEvent locations use a bottom-left origin.
-            NSEvent.mouseEvent(with: .rightMouseDown,
+            NSEvent.mouseEvent(with: type,
                                location: CGPoint(x: point.x, y: 300 - point.y),
                                modifierFlags: [], timestamp: 0,
                                windowNumber: window.windowNumber, context: nil,
@@ -602,6 +835,46 @@ enum SelfTest {
         } else {
             check("a right-click on an item is routed to it", false)
         }
+
+        // A flyout sits over file rows; clicking Copy must retain its original target.
+        let overlay = RightClickCatcher.View(frame: window.contentView!.bounds)
+        overlay.blocksFileSelection = true
+        let menuExplorer = Explorer()
+        MarqueeController.shared.setZone(window.contentView!.bounds, for: menuExplorer)
+        MarqueeController.shared.setItems([:], for: menuExplorer)
+        defer { MarqueeController.shared.setZone(.zero, for: menuExplorer) }
+        var selectedRow = "original"
+        catcher.onMouseDown = { _ in selectedRow = "next" }
+        window.contentView?.addSubview(overlay)
+        if let e = rightClick(at: CGPoint(x: 100, y: 80), type: .leftMouseDown) {
+            router.routeSelection(e)
+            check("menu overlay takes priority over the smaller file row",
+                  router.target(at: CGPoint(x: 100, y: 80), in: window) === overlay)
+            check("clicking a menu command preserves its file selection", selectedRow == "original")
+            check("menu clicks cannot begin a selection band", !MarqueeController.shared.handle(e))
+        }
+        overlay.removeFromSuperview()
+        if let e = rightClick(at: CGPoint(x: 100, y: 80), type: .leftMouseDown) {
+            router.routeSelection(e)
+            check("file selection resumes after the menu closes", selectedRow == "next")
+        }
+
+        let field = NSTextField(frame: NSRect(x: 10, y: 10, width: 150, height: 25))
+        window.contentView?.addSubview(field)
+        window.makeFirstResponder(field)
+        if let e = rightClick(at: CGPoint(x: 100, y: 80)) {
+            router.focusFileArea(e)
+            check("file clicks release text editing focus for copy and paste",
+                  !(window.firstResponder is NSTextView) && !(window.firstResponder is NSTextField))
+        }
+        window.makeFirstResponder(field)
+        let editor = window.firstResponder
+        if let e = rightClick(at: CGPoint(x: 30, y: 20)) {
+            router.focusFileArea(e)
+            check("clicks inside text fields preserve text copy and paste", window.firstResponder === editor)
+        }
+        window.makeFirstResponder(nil)
+        field.removeFromSuperview()
 
         received = nil
         var backgroundPoint: CGPoint?
@@ -700,6 +973,13 @@ enum SelfTest {
         let arguments = ExternalTarget.commandLine(["--reveal", special.path])
         check("command-line reveal preserves the path and mode",
               arguments.count == 1 && arguments[0].0 == special && arguments[0].1)
+        let originalTabs = ex.tabs
+        let originalActive = ex.active
+        defer {
+            ex.tabs = originalTabs
+            ex.active = originalActive
+            ex.go(to: root)
+        }
         let showHidden = Prefs.shared.showHidden
         ex.go(to: root)
         ex.revealExternal([file, hidden, special, hidden])
@@ -709,11 +989,26 @@ enum SelfTest {
         check("duplicate external paths cannot duplicate file rows",
               ex.tab.items.filter { $0.url.path == hidden.path }.count == 1)
         let tabCount = ex.tabs.count
+        let originalTab = ex.tab
+        let originalModel = AppState.shared.activeModel
         AppState.shared.openExternal([ExternalTarget(directory: root, selection: file),
                                       ExternalTarget(directory: root, selection: special)])
-        check("external files in an open folder reuse its tab and select both files",
-              ex.tabs.count == tabCount && ex.tab.selection.count == 2
+        check("external files in an open folder add one tab and select both files",
+              ex.tabs.count == tabCount + 1 && ex.tab.id != originalTab.id && ex.tab.selection.count == 2
               && ex.selectedItems.contains { $0.url.standardizedFileURL.path == file.standardizedFileURL.path })
+        check("external requests preserve the existing tab and window",
+              ex.tabs[tabCount - 1].id == originalTab.id
+              && ex.tabs[tabCount - 1].selection == originalTab.selection
+              && AppState.shared.activeModel === originalModel)
+        AppState.shared.openExternal([ExternalTarget(directory: root, selection: nil)])
+        check("repeated external requests add a fresh tab",
+              ex.tabs.count == tabCount + 2 && ex.tab.location == .folder(root))
+        ex.go(to: .home)
+        let homeID = ex.tab.id
+        AppState.shared.openExternal([ExternalTarget(directory: root, selection: nil)])
+        check("external requests preserve the home tab",
+              ex.tabs.count == tabCount + 3
+              && ex.tabs.contains { $0.id == homeID && $0.location == .home })
         ex.go(to: root)
         check("external reveal leaves file contents intact",
               (try? String(contentsOf: special, encoding: .utf8)) == "special")

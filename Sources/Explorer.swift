@@ -157,6 +157,7 @@ enum UndoAction {
     case create(url: URL)
     case trash(items: [(original: URL, trashed: URL)])
     case copy(created: [URL])
+    case restoreCreated(items: [(original: URL, trashed: URL)], isCopy: Bool)
 
     var label: String {
         switch self {
@@ -165,6 +166,7 @@ enum UndoAction {
         case .create: return "New"
         case .trash: return "Delete"
         case .copy: return "Copy"
+        case .restoreCreated(_, let isCopy): return isCopy ? "Copy" : "New"
         }
     }
 }
@@ -174,10 +176,15 @@ enum UndoAction {
 enum Ops {
     static let fm = FileManager.default
 
+    static func exists(_ url: URL) -> Bool {
+        // fileExists follows symlinks and misses occupied dangling-link names.
+        (try? fm.attributesOfItem(atPath: url.path)) != nil
+    }
+
     /// Windows-style conflict naming: "name - Copy", "name - Copy (2)", ...
     static func uniqueURL(for name: String, in dir: URL, copySuffix: Bool) -> URL {
         var candidate = dir.appendingPathComponent(name)
-        guard fm.fileExists(atPath: candidate.path) else { return candidate }
+        guard exists(candidate) else { return candidate }
         let stem = (name as NSString).deletingPathExtension
         let ext = (name as NSString).pathExtension
         func build(_ s: String) -> URL {
@@ -185,18 +192,18 @@ enum Ops {
         }
         if copySuffix {
             candidate = build("\(stem) - Copy")
-            if !fm.fileExists(atPath: candidate.path) { return candidate }
+            if !exists(candidate) { return candidate }
             var n = 2
             while true {
                 candidate = build("\(stem) - Copy (\(n))")
-                if !fm.fileExists(atPath: candidate.path) { return candidate }
+                if !exists(candidate) { return candidate }
                 n += 1
             }
         } else {
             var n = 2
             while true {
                 candidate = build("\(stem) (\(n))")
-                if !fm.fileExists(atPath: candidate.path) { return candidate }
+                if !exists(candidate) { return candidate }
                 n += 1
             }
         }
@@ -235,6 +242,37 @@ enum Ops {
             } catch { NSSound.beep() }
         }
         return out
+    }
+
+    /// Move a batch atomically from the user's perspective. If one move fails,
+    /// reverse the completed moves before reporting the error.
+    static func movePairs(_ pairs: [(from: URL, to: URL)]) throws {
+        var completed: [(from: URL, to: URL)] = []
+        do {
+            for pair in pairs {
+                try fm.moveItem(at: pair.from, to: pair.to)
+                completed.append(pair)
+            }
+        } catch {
+            for pair in completed.reversed() { try? fm.moveItem(at: pair.to, to: pair.from) }
+            throw error
+        }
+    }
+
+    static func trashChecked(_ urls: [URL]) throws -> [(original: URL, trashed: URL)] {
+        var completed: [(original: URL, trashed: URL)] = []
+        do {
+            for url in urls {
+                var resulting: NSURL?
+                try fm.trashItem(at: url, resultingItemURL: &resulting)
+                guard let trashed = resulting as URL? else { throw CocoaError(.fileWriteUnknown) }
+                completed.append((url, trashed))
+            }
+            return completed
+        } catch {
+            for item in completed.reversed() { try? fm.moveItem(at: item.trashed, to: item.original) }
+            throw error
+        }
     }
 
     static func deleteForever(_ urls: [URL]) {
@@ -339,6 +377,7 @@ final class Explorer: ObservableObject {
     /// Called whenever the user drives this pane, so the window can make it active.
     var onInteract: (() -> Void)?
     private var searchWork: DispatchWorkItem?
+    private var searchGeneration = UUID()
     private var watcher: DirectoryWatcher?
 
     var tab: TabState {
@@ -354,6 +393,13 @@ final class Explorer: ObservableObject {
     // MARK: Loading
 
     func reload() {
+        if !tab.search.isEmpty {
+            watchCurrentFolder()
+            updateSearch(tab.search)
+            return
+        }
+        searchWork?.cancel()
+        searchGeneration = UUID()
         let loc = tab.location
         var items: [FileItem] = []
         switch loc {
@@ -562,14 +608,16 @@ final class Explorer: ObservableObject {
             NSApp.keyWindow?.performClose(nil)
             return
         }
+        guard tabs.indices.contains(idx) else { return }
+        let activeID = tab.id
         tabs.remove(at: idx)
-        active = min(active, tabs.count - 1)
+        active = tabs.firstIndex(where: { $0.id == activeID }) ?? min(idx, tabs.count - 1)
         reload()
     }
 
     func nextTab() { active = (active + 1) % tabs.count; reload() }
     func prevTab() { active = (active - 1 + tabs.count) % tabs.count; reload() }
-    func selectTab(_ i: Int) { guard i < tabs.count else { return }; active = i; reload() }
+    func selectTab(_ i: Int) { guard tabs.indices.contains(i) else { return }; active = i; reload() }
 
     // MARK: Selection
 
@@ -692,21 +740,28 @@ final class Explorer: ObservableObject {
     /// Hands a copy or move to the background queue and folds the result into
     /// the undo stack once it lands.
     func transfer(kind: TransferJob.Kind, sources: [URL], to destination: URL) {
+        let originatingTab = tab.id
         TransferQueue.shared.enqueue(kind: kind, sources: sources, to: destination) { [weak self] job in
             guard let self else { return }
-            switch job.state {
-            case .failed(let message):
-                self.sheet = .error(message)
-            case .finished:
-                if !job.moved.isEmpty { self.push(.move(items: job.moved)) }
-                if !job.created.isEmpty { self.push(.copy(created: job.created)) }
-            default:
-                break
+            // Completed entries remain undoable even if a later entry failed or was cancelled.
+            if !job.moved.isEmpty { self.push(.move(items: job.moved)) }
+            if !job.created.isEmpty { self.push(.copy(created: job.created)) }
+            if case .failed(let message) = job.state { self.sheet = .error(message) }
+            if let current = self.currentDirectory,
+               Transfers.sameDirectory(current, destination)
+                || sources.contains(where: { Transfers.sameDirectory(current, $0.deletingLastPathComponent()) }) {
+                self.reload()
             }
-            self.reload()
-            let landed = Set((job.created + job.moved.map(\.to)).map { $0.lastPathComponent })
+            guard self.tab.id == originatingTab,
+                  let current = self.currentDirectory,
+                  Transfers.sameDirectory(current, destination) else { return }
+            let landed = Set((job.created + job.moved.map(\.to)).map {
+                Transfers.entryPath($0)
+            })
             if !landed.isEmpty {
-                self.tab.selection = Set(self.tab.items.filter { landed.contains($0.name) }.map(\.id))
+                self.tab.selection = Set(self.tab.items.filter {
+                    landed.contains(Transfers.entryPath($0.url))
+                }.map(\.id))
             }
         }
     }
@@ -827,41 +882,55 @@ final class Explorer: ObservableObject {
         if undoStack.count > 50 { undoStack.removeFirst() }
     }
 
-    func undo() {
-        guard let a = undoStack.popLast() else { NSSound.beep(); return }
-        switch a {
+    /// Returns the action to place on the opposite stack. Deleted creations
+    /// retain their Trash URLs so redo restores the actual type and contents.
+    private func applyHistory(_ action: UndoAction, undoing: Bool) throws -> UndoAction {
+        switch action {
         case .rename(let from, let to):
-            _ = try? Ops.rename(to, to: from.lastPathComponent)
+            try Ops.movePairs([(undoing ? to : from, undoing ? from : to)])
         case .move(let items):
-            for m in items.reversed() { try? Ops.fm.moveItem(at: m.to, to: m.from) }
+            let pairs = undoing ? items.reversed().map { (from: $0.to, to: $0.from) } : items
+            try Ops.movePairs(pairs)
         case .create(let url):
-            _ = Ops.trash([url])
-        case .trash(let items):
-            for i in items.reversed() { try? Ops.fm.moveItem(at: i.trashed, to: i.original) }
+            guard undoing else { throw CocoaError(.fileNoSuchFile) }
+            return .restoreCreated(items: try Ops.trashChecked([url]), isCopy: false)
         case .copy(let created):
-            _ = Ops.trash(created)
+            guard undoing else { throw CocoaError(.fileNoSuchFile) }
+            return .restoreCreated(items: try Ops.trashChecked(created), isCopy: true)
+        case .restoreCreated(let items, let isCopy):
+            try Ops.movePairs(items.map { (from: $0.trashed, to: $0.original) })
+            if isCopy { return .copy(created: items.map(\.original)) }
+            guard let first = items.first else { throw CocoaError(.fileNoSuchFile) }
+            return .create(url: first.original)
+        case .trash(let items):
+            if undoing {
+                try Ops.movePairs(items.reversed().map { (from: $0.trashed, to: $0.original) })
+            } else {
+                return .trash(items: try Ops.trashChecked(items.map(\.original)))
+            }
         }
-        redoStack.append(a)
-        reload()
-        flash(LF("Undo {0}", L(a.label)))
+        return action
+    }
+
+    func undo() {
+        guard let action = undoStack.last else { NSSound.beep(); return }
+        do {
+            let inverse = try applyHistory(action, undoing: true)
+            undoStack.removeLast()
+            redoStack.append(inverse)
+            reload()
+            flash(LF("Undo {0}", L(action.label)))
+        } catch { sheet = .error(error.localizedDescription) }
     }
 
     func redo() {
-        guard let a = redoStack.popLast() else { NSSound.beep(); return }
-        switch a {
-        case .rename(let from, let to):
-            _ = try? Ops.rename(from, to: to.lastPathComponent)
-        case .move(let items):
-            for m in items { try? Ops.fm.moveItem(at: m.from, to: m.to) }
-        case .create(let url):
-            if url.pathExtension.isEmpty { try? Ops.fm.createDirectory(at: url, withIntermediateDirectories: true) }
-            else { Ops.fm.createFile(atPath: url.path, contents: nil) }
-        case .trash(let items):
-            _ = Ops.trash(items.map(\.original))
-        case .copy: break
-        }
-        undoStack.append(a)
-        reload()
+        guard let action = redoStack.last else { NSSound.beep(); return }
+        do {
+            let inverse = try applyHistory(action, undoing: false)
+            redoStack.removeLast()
+            undoStack.append(inverse)
+            reload()
+        } catch { sheet = .error(error.localizedDescription) }
     }
 
     // MARK: Search
@@ -869,6 +938,9 @@ final class Explorer: ObservableObject {
     func updateSearch(_ text: String) {
         tab.search = text
         searchWork?.cancel()
+        searchGeneration = UUID()
+        let generation = searchGeneration
+        let tabID = tab.id, location = tab.location
         guard !text.isEmpty else {
             tab.searching = false
             reload()
@@ -897,7 +969,8 @@ final class Explorer: ObservableObject {
             let sorted = Loader.sort(found, by: key, ascending: asc)
             DispatchQueue.main.async {
                 guard let self else { return }
-                guard self.tab.search == text else { return }
+                guard self.searchGeneration == generation, self.tab.id == tabID,
+                      self.tab.location == location, self.tab.search == text else { return }
                 self.tab.searching = true
                 self.tab.items = sorted
                 self.tab.selection = []

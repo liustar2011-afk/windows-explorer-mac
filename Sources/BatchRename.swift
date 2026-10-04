@@ -183,16 +183,15 @@ struct BatchRenameDialog: View {
     }
 
     private func apply() {
-        var renames: [(from: URL, to: URL)] = []
-        for (item, newName) in results where newName != item.name {
-            let target = item.url.deletingLastPathComponent().appendingPathComponent(newName)
-            do {
-                try FileManager.default.moveItem(at: item.url, to: target)
-                renames.append((item.url, target))
-            } catch {
-                ex.sheet = .error(LF("Could not rename “{0}”. {1}", item.name, error.localizedDescription))
-                return
-            }
+        let renames = results.filter { $0.newName != $0.item.name }.map {
+            (from: $0.item.url, to: $0.item.url.deletingLastPathComponent().appendingPathComponent($0.newName))
+        }
+        do {
+            try Ops.movePairs(renames)
+        } catch {
+            ex.sheet = .error(error.localizedDescription)
+            ex.reload()
+            return
         }
         ex.recordBatchRename(renames)
         onClose()

@@ -92,6 +92,59 @@ enum FolderCompare {
     }
 }
 
+/// A comparison belongs to exactly one pair of directories.
+struct FolderComparison {
+    let left: URL
+    let right: URL
+    let entries: [CompareEntry]
+
+    func matches(left: URL?, right: URL?) -> Bool {
+        guard let left, let right else { return false }
+        return Transfers.sameDirectory(self.left, left) && Transfers.sameDirectory(self.right, right)
+    }
+}
+
+enum FolderSync {
+    struct Copy {
+        let source: URL
+        let destination: URL
+    }
+
+    static func plan(_ comparison: FolderComparison, fromLeft: Bool) -> [Copy] {
+        let source = fromLeft ? comparison.left : comparison.right
+        let target = fromLeft ? comparison.right : comparison.left
+        let wanted: CompareEntry.Status = fromLeft ? .onlyLeft : .onlyRight
+        var copiedDirectories: [String] = []
+        var copies: [Copy] = []
+        // Ancestors must be considered before their descendants, independent
+        // of the display's locale-sensitive sorting order.
+        let entries = comparison.entries.sorted {
+            let a = $0.relativePath.split(separator: "/").count
+            let b = $1.relativePath.split(separator: "/").count
+            return a == b ? $0.relativePath < $1.relativePath : a < b
+        }
+        for entry in entries where entry.status == wanted || entry.status == .different {
+            if copiedDirectories.contains(where: { entry.relativePath.hasPrefix($0 + "/") }) { continue }
+            let from = source.appendingPathComponent(entry.relativePath)
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: from.path) else { continue }
+            copies.append(Copy(source: from, destination: target.appendingPathComponent(entry.relativePath).deletingLastPathComponent()))
+            if attrs[.type] as? FileAttributeType == .typeDirectory {
+                copiedDirectories.append(entry.relativePath)
+            }
+        }
+        return copies
+    }
+
+    static func enqueue(_ copies: [Copy]) throws {
+        // Validate the entire plan before starting its first filesystem operation.
+        for copy in copies { try Transfers.validate([copy.source], destination: copy.destination) }
+        for copy in copies {
+            TransferQueue.shared.enqueue(kind: .copy, sources: [copy.source],
+                                         to: copy.destination, replaceExisting: true)
+        }
+    }
+}
+
 // MARK: - Dialog
 
 struct CompareDialog: View {
@@ -102,10 +155,12 @@ struct CompareDialog: View {
 
     @State private var leftURL: URL?
     @State private var rightURL: URL?
-    @State private var entries: [CompareEntry] = []
+    @State private var comparison: FolderComparison?
+    @State private var comparisonGeneration = UUID()
+    private var entries: [CompareEntry] { comparison?.entries ?? [] }
     @State private var scanning = false
     @State private var differencesOnly = true
-    @State private var scanned = false
+    private var scanned: Bool { comparison != nil }
 
     private var shown: [CompareEntry] {
         differencesOnly ? entries.filter { $0.status != .same } : entries
@@ -137,16 +192,19 @@ struct CompareDialog: View {
             leftURL = model.left.currentDirectory
             rightURL = model.right?.currentDirectory
         }
+        .onChange(of: leftURL) { _, _ in invalidateComparison() }
+        .onChange(of: rightURL) { _, _ in invalidateComparison() }
     }
 
     private var canSync: Bool {
-        leftURL != nil && rightURL != nil && !shown.isEmpty && !scanning
+        comparison?.matches(left: leftURL, right: rightURL) == true
+            && !shown.isEmpty && !scanning
     }
 
     private var folderPickers: some View {
         VStack(spacing: 10) {
-            FolderPickerRow(title: L("Left"), url: $leftURL)
-            FolderPickerRow(title: L("Right"), url: $rightURL)
+            FolderPickerRow(title: L("Left"), url: $leftURL).disabled(scanning)
+            FolderPickerRow(title: L("Right"), url: $rightURL).disabled(scanning)
             HStack(spacing: 12) {
                 WinDialogButton(title: scanning ? L("Comparing…") : L("Compare"),
                                 primary: true,
@@ -216,55 +274,36 @@ struct CompareDialog: View {
     private func compare() {
         guard let left = leftURL, let right = rightURL else { return }
         scanning = true
+        comparisonGeneration = UUID()
+        let generation = comparisonGeneration
         DispatchQueue.global(qos: .userInitiated).async {
             let result = FolderCompare.run(left: left, right: right)
             DispatchQueue.main.async {
-                entries = result
+                guard comparisonGeneration == generation, leftURL == left, rightURL == right else { return }
+                comparison = FolderComparison(left: left, right: right, entries: result)
                 scanning = false
-                scanned = true
             }
         }
     }
 
-    /// One-way sync: everything missing or newer on the source goes to the target.
+    private func invalidateComparison() {
+        comparisonGeneration = UUID()
+        comparison = nil
+        scanning = false
+    }
+
     private func sync(fromLeft: Bool) {
-        guard let left = leftURL, let right = rightURL else { return }
-        let source = fromLeft ? left : right
-        let target = fromLeft ? right : left
-        let wanted: CompareEntry.Status = fromLeft ? .onlyLeft : .onlyRight
-
-        var byFolder: [URL: [URL]] = [:]
-        for entry in entries where entry.status == wanted || entry.status == .different {
-            if entry.status == .different && entry.isDirectory { continue }
-            let from = source.appendingPathComponent(entry.relativePath)
-            guard FileManager.default.fileExists(atPath: from.path) else { continue }
-            let destination = target.appendingPathComponent(entry.relativePath)
-                .deletingLastPathComponent()
-            // Nested folders that are copied whole don't need their children queued.
-            if entry.isDirectory {
-                byFolder[destination, default: []].append(from)
-            } else {
-                let parentCopied = byFolder.values.flatMap { $0 }
-                    .contains { from.path.hasPrefix($0.path + "/") }
-                if !parentCopied { byFolder[destination, default: []].append(from) }
-            }
+        guard let comparison, comparison.matches(left: leftURL, right: rightURL), !scanning else { return }
+        let copies = FolderSync.plan(comparison, fromLeft: fromLeft)
+        guard !copies.isEmpty else { NSSound.beep(); return }
+        do {
+            try FolderSync.enqueue(copies)
+            onClose()
+        } catch {
+            model.active.sheet = .error(error.localizedDescription)
         }
-
-        guard !byFolder.isEmpty else { NSSound.beep(); return }
-        for (destination, sources) in byFolder {
-            try? FileManager.default.createDirectory(at: destination,
-                                                     withIntermediateDirectories: true)
-            // Replace differing files rather than making " - Copy" duplicates.
-            for source in sources {
-                let existing = destination.appendingPathComponent(source.lastPathComponent)
-                if FileManager.default.fileExists(atPath: existing.path) {
-                    _ = Ops.trash([existing])
-                }
-            }
-            TransferQueue.shared.enqueue(kind: .copy, sources: sources, to: destination)
-        }
-        onClose()
     }
+
 }
 
 struct FolderPickerRow: View {

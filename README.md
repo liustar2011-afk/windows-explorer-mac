@@ -205,8 +205,9 @@ open -a "File Explorer" "/path/to/folder"
 open -a "File Explorer" "/path/to/file.txt"
 ```
 
-A running app receives these requests too. Files in the same folder are selected in
-one tab, and explicitly requested hidden files can be revealed without changing the
+A running app receives these requests in new tabs in the active window, preserving
+existing tabs even when the requested folder is already open. Files in the same
+folder within one request are selected in one new tab, and explicitly requested hidden files can be revealed without changing the
 hidden-files preference. For configurable integrations, percent-encode an absolute
 path in `file-explorer://open?path=…` or `file-explorer://reveal?path=…`.
 The executable also accepts paths and `--reveal` (to select a folder in its parent).

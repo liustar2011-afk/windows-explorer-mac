@@ -54,7 +54,7 @@ struct ContentView: View {
                     Color.black.opacity(0.001)
                         .ignoresSafeArea()
                         .onTapGesture { menus.close() }
-                        .onRightClick { _ in menus.close() }
+                        .onRightClick(blocksFileSelection: true) { _ in menus.close() }
                     FlyoutView(open: open,
                                flipSubmenus: flyoutX(open, geo.size) + open.width + 232 > geo.size.width) {
                         menus.close()
@@ -263,6 +263,7 @@ struct DialogHost: View {
                 Color.black.opacity(0.35)
                     .ignoresSafeArea()
                     .onTapGesture { }
+                    .onRightClick(blocksFileSelection: true) { _ in }
                 dialog(sheet)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }

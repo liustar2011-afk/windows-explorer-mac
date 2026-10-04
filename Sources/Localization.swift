@@ -37,6 +37,7 @@ enum Localization {
     }
 
     static let chinese: [String: String] = [
+        "A folder cannot be copied or moved into itself.": "不能将文件夹复制或移动到自身及其子目录中。",
         "Eject": "弹出",
         "Could not eject “{0}”.\n{1}": "无法弹出“{0}”。\n{1}",
         "Window button position": "窗口按钮位置",

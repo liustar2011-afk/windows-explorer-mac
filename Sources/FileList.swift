@@ -38,7 +38,7 @@ final class RightClickRouter {
         return CGPoint(x: p.x, y: content.bounds.height - p.y)
     }
 
-    /// The most specific target under a point, if any.
+    /// Menu shields take precedence; otherwise pick the smallest target under the pointer.
     func target(at point: CGPoint, in window: NSWindow?) -> RightClickCatcher.View? {
         var best: RightClickCatcher.View?
         var bestArea = CGFloat.greatestFiniteMagnitude
@@ -46,22 +46,45 @@ final class RightClickRouter {
             guard view.window === window, !view.isHiddenOrHasHiddenAncestor,
                   let frame = view.rootFrame, frame.contains(point) else { continue }
             let area = frame.width * frame.height
-            if area < bestArea { bestArea = area; best = view }
+            if best == nil || (view.blocksFileSelection && !best!.blocksFileSelection)
+                || (view.blocksFileSelection == best!.blocksFileSelection && area < bestArea) {
+                bestArea = area; best = view
+            }
         }
         return best
+    }
+
+    /// Clicking files must stop editing the search/address field so file shortcuts
+    /// reach the explorer. Keep inline rename fields in the normal responder chain.
+    func focusFileArea(_ event: NSEvent) {
+        guard let window = event.window,
+              let content = window.contentView else { return }
+        let point = Self.rootPoint(event)
+        guard contentFrames.values.contains(where: { $0.contains(point) }) else { return }
+        func hitsTextEditor(_ view: NSView) -> Bool {
+            guard !view.isHiddenOrHasHiddenAncestor else { return false }
+            if (view is NSTextView || view is NSTextField),
+               view.convert(view.bounds, to: nil).contains(event.locationInWindow) { return true }
+            return view.subviews.contains(where: hitsTextEditor)
+        }
+        if hitsTextEditor(content) { return }
+        window.makeFirstResponder(nil)
     }
 
     /// Update selection on mouse-down without consuming the event: SwiftUI
     /// must still receive it for double-click activation and file dragging.
     func routeSelection(_ event: NSEvent) {
+        focusFileArea(event)
         guard event.clickCount == 1,
               let view = target(at: Self.rootPoint(event), in: event.window) else { return }
+        guard !view.blocksFileSelection else { return }
         view.onMouseDown?(event)
     }
 
     /// Handles a right-click. Returns true when it was consumed.
     @discardableResult
     func route(_ event: NSEvent) -> Bool {
+        focusFileArea(event)
         let point = RightClickRouter.rootPoint(event)
         if let view = target(at: point, in: event.window) {
             view.onClick?(point)
@@ -79,10 +102,12 @@ struct RightClickCatcher: NSViewRepresentable {
     @ObservedObject private var interfaceSettings = Settings.shared
     let onClick: (CGPoint) -> Void
     var onMouseDown: ((NSEvent) -> Void)? = nil
+    var blocksFileSelection = false
 
     final class View: NSView {
         var onClick: ((CGPoint) -> Void)?
         var onMouseDown: ((NSEvent) -> Void)?
+        var blocksFileSelection = false
         override var isFlipped: Bool { true }
 
         /// Invisible to hit-testing: the router dispatches to it explicitly.
@@ -105,11 +130,14 @@ struct RightClickCatcher: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> View {
-        let v = View(); v.onClick = onClick; v.onMouseDown = onMouseDown; return v
+        let v = View(); v.onClick = onClick; v.onMouseDown = onMouseDown
+        v.blocksFileSelection = blocksFileSelection
+        return v
     }
     func updateNSView(_ nsView: View, context: Context) {
         nsView.onClick = onClick
         nsView.onMouseDown = onMouseDown
+        nsView.blocksFileSelection = blocksFileSelection
     }
 }
 
@@ -118,8 +146,10 @@ extension View {
     /// content and is invisible to SwiftUI hit-testing, so taps, drags and
     /// drops keep working exactly as before.
     func onRightClick(mouseDown: ((NSEvent) -> Void)? = nil,
+                      blocksFileSelection: Bool = false,
                       perform: @escaping (CGPoint) -> Void) -> some View {
-        background(RightClickCatcher(onClick: perform, onMouseDown: mouseDown).allowsHitTesting(false))
+        background(RightClickCatcher(onClick: perform, onMouseDown: mouseDown,
+                                     blocksFileSelection: blocksFileSelection).allowsHitTesting(false))
     }
 }
 

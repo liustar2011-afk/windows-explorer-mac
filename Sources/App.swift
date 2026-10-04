@@ -381,6 +381,13 @@ enum Keys {
         let ctrl = event.modifierFlags.contains(.command) || event.modifierFlags.contains(.control)
         let alt = event.modifierFlags.contains(.option)
 
+        // SwiftUI dialogs are overlays, not AppKit modal windows. Keep file
+        // commands out of the background while preserving dialog text editing.
+        if ex.sheet != nil {
+            if code == 53 { ex.sheet = nil; return true }
+            return false
+        }
+
         // While a field is being edited, only Escape is ours.
         if editingText {
             if code == 53 {

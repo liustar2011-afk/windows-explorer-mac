@@ -1,0 +1,1 @@
+Search field remained first responder after file-area interaction; Keys.handle intentionally ignores file shortcuts during text editing. Fixed click routing to release text focus only for file-area clicks outside native text fields.

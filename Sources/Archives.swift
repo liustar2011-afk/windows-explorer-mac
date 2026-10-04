@@ -46,21 +46,27 @@ enum Archives {
 
     /// `-rw-r--r--  0 user group  1234 Aug 20 00:15 path/to/file`
     private static func parse(_ line: String) -> ArchiveEntry? {
-        let parts = line.split(separator: " ", omittingEmptySubsequences: true)
-        guard parts.count >= 9 else { return nil }
-        let permissions = String(parts[0])
-        guard let size = Int64(parts[4]) else { return nil }
-
-        // The name starts after the three date fields, and may contain spaces.
-        var name = parts[8...].joined(separator: " ")
-        if let arrow = name.range(of: " -> ") { name = String(name[..<arrow.lowerBound]) }
-        name = name.trimmingCharacters(in: .whitespaces)
+        // Match only the metadata prefix. Splitting the entire line destroys
+        // repeated/leading/trailing spaces that belong to the archive entry name.
+        let pattern = #"^(\S+)\s+\S+\s+\S+\s+\S+\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+) "#
+        guard let expression = try? NSRegularExpression(pattern: pattern),
+              let match = expression.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+              let prefix = Range(match.range, in: line) else { return nil }
+        func field(_ index: Int) -> String {
+            guard let range = Range(match.range(at: index), in: line) else { return "" }
+            return String(line[range])
+        }
+        let permissions = field(1)
+        guard let size = Int64(field(2)) else { return nil }
+        var name = String(line[prefix.upperBound...])
+        if permissions.hasPrefix("l"), let arrow = name.range(of: " -> ") {
+            name = String(name[..<arrow.lowerBound])
+        }
         if name.hasPrefix("./") { name.removeFirst(2) }
         let isDirectory = permissions.hasPrefix("d") || name.hasSuffix("/")
         if name.hasSuffix("/") { name.removeLast() }
         guard !name.isEmpty else { return nil }
-
-        let stamp = "\(parts[5]) \(parts[6]) \(parts[7])"
+        let stamp = "\(field(3)) \(field(4)) \(field(5))"
         return ArchiveEntry(path: name, size: size,
                             modified: date(from: stamp), isDirectory: isDirectory)
     }

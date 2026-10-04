@@ -217,20 +217,15 @@ extension Explorer {
 extension AppState {
     func openExternal(_ targets: [ExternalTarget]) {
         guard !targets.isEmpty else { return }
-        if activeModel == nil { openNewWindow(at: .folder(targets[0].directory)) }
+        if activeModel == nil { openNewWindow() }
         guard let model = activeModel else { return }
         let explorer = model.active
         // Preserve request order and group files in the same folder into one tab.
         var directories: [URL] = []
         for target in targets where !directories.contains(target.directory) { directories.append(target.directory) }
         for directory in directories {
-            if let existing = explorer.tabs.firstIndex(where: { $0.location.url?.standardizedFileURL.path == directory.standardizedFileURL.path }) {
-                explorer.selectTab(existing)
-            } else {
-                explorer.go(to: directory, newTab: explorer.tab.location != .home)
-            }
             explorer.filterKind = nil
-            explorer.go(to: directory)
+            explorer.openTab(.folder(directory))
             explorer.sheet = nil
             explorer.revealExternal(targets.filter { $0.directory == directory }.compactMap(\.selection))
         }

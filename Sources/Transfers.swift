@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Darwin
 
 // MARK: - Model
 
@@ -11,6 +12,7 @@ struct TransferJob: Identifiable {
     let kind: Kind
     let sources: [URL]
     let destination: URL?
+    var replaceExisting = false
     var state: State = .waiting
     var bytesTotal: Int64 = 0
     var bytesDone: Int64 = 0
@@ -82,8 +84,9 @@ final class TransferQueue: ObservableObject {
     // MARK: Submitting work
 
     func enqueue(kind: TransferJob.Kind, sources: [URL], to destination: URL?,
-                 onFinish: ((TransferJob) -> Void)? = nil) {
+                 replaceExisting: Bool = false, onFinish: ((TransferJob) -> Void)? = nil) {
         var job = TransferJob(kind: kind, sources: sources, destination: destination)
+        job.replaceExisting = replaceExisting
         job.filesTotal = sources.count
         jobs.append(job)
         if let onFinish { completion[job.id] = onFinish }
@@ -94,6 +97,8 @@ final class TransferQueue: ObservableObject {
         cancelled.insert(id)
         if let i = jobs.firstIndex(where: { $0.id == id }), jobs[i].state == .waiting {
             jobs[i].state = .cancelled
+            completion.removeValue(forKey: id)?(jobs[i])
+            cancelled.remove(id)
         }
     }
 
@@ -117,6 +122,7 @@ final class TransferQueue: ObservableObject {
                 if let i = self.jobs.firstIndex(where: { $0.id == job.id }) {
                     self.jobs[i] = result
                 }
+                self.cancelled.remove(job.id)
                 self.completion.removeValue(forKey: job.id)?(result)
                 self.running = false
                 self.pump()
@@ -143,161 +149,221 @@ final class TransferQueue: ObservableObject {
         }
     }
 
-    private func perform(_ job: TransferJob) -> TransferJob {
-        var job = job
+    private enum CopyError: Error { case cancelled }
+
+    private func checkCancellation(_ id: UUID) throws {
+        if isCancelled(id) { throw CopyError.cancelled }
+    }
+
+    private func perform(_ submitted: TransferJob) -> TransferJob {
+        var job = submitted
         let fm = FileManager.default
-
-        // Measure first so the progress bar means something.
-        var totalBytes: Int64 = 0
-        var totalFiles = 0
-        for url in job.sources {
-            let (bytes, files) = Transfers.measure(url)
-            totalBytes += bytes
-            totalFiles += files
-        }
-        job.bytesTotal = totalBytes
-        job.filesTotal = totalFiles
-        update(job.id) { $0.bytesTotal = totalBytes; $0.filesTotal = totalFiles }
-
-        for source in job.sources {
-            if isCancelled(job.id) { job.state = .cancelled; return job }
-
-            do {
-                switch job.kind {
-                case .delete:
-                    try fm.removeItem(at: source)
-                    job.filesDone += 1
-                    update(job.id) { $0.filesDone += 1; $0.currentName = source.lastPathComponent }
-
-                case .move:
-                    guard let destination = job.destination else { continue }
-                    let target = Ops.uniqueURL(for: source.lastPathComponent,
-                                               in: destination, copySuffix: false)
-                    if Transfers.sameVolume(source, destination) {
-                        try fm.moveItem(at: source, to: target)
-                        job.moved.append((source, target))
-                        job.bytesDone = job.bytesTotal
-                        job.filesDone = job.filesTotal
-                        update(job.id) {
-                            $0.bytesDone = $0.bytesTotal
-                            $0.filesDone = $0.filesTotal
-                            $0.currentName = source.lastPathComponent
-                        }
-                    } else {
-                        try copyTree(source, to: target, job: &job)
-                        try fm.removeItem(at: source)
-                        job.moved.append((source, target))
-                    }
-
-                case .copy:
-                    guard let destination = job.destination else { continue }
-                    let sameDir = source.deletingLastPathComponent().path == destination.path
-                    let target = Ops.uniqueURL(for: source.lastPathComponent,
-                                               in: destination, copySuffix: sameDir)
-                    try copyTree(source, to: target, job: &job)
-                    job.created.append(target)
-                }
-            } catch {
-                job.state = .failed(error.localizedDescription)
-                return job
+        do {
+            if job.kind != .delete {
+                guard let destination = job.destination else { throw CocoaError(.fileNoSuchFile) }
+                try Transfers.validate(job.sources, destination: destination)
             }
-        }
+            job.filesTotal = 0
+            for url in job.sources {
+                try checkCancellation(job.id)
+                let (bytes, files) = Transfers.measure(url)
+                job.bytesTotal += bytes
+                job.filesTotal += files
+            }
+            let bytes = job.bytesTotal, files = job.filesTotal
+            update(job.id) { $0.bytesTotal = bytes; $0.filesTotal = files }
 
-        job.state = isCancelled(job.id) ? .cancelled : .finished
-        job.bytesDone = job.bytesTotal
+            for source in job.sources {
+                try checkCancellation(job.id)
+                if job.kind == .delete {
+                    let (bytes, files) = Transfers.measure(source)
+                    try fm.removeItem(at: source)
+                    job.bytesDone += bytes
+                    job.filesDone += files
+                    continue
+                }
+                let destination = job.destination!
+                if job.kind == .move && Transfers.sameDirectory(source.deletingLastPathComponent(), destination) {
+                    continue
+                }
+                let target = job.replaceExisting
+                    ? destination.appendingPathComponent(source.lastPathComponent)
+                    : Ops.uniqueURL(for: source.lastPathComponent, in: destination,
+                                    copySuffix: Transfers.sameDirectory(source.deletingLastPathComponent(), destination))
+                if job.kind == .move && Transfers.sameVolume(source, destination) {
+                    try fm.moveItem(at: source, to: target)
+                    job.moved.append((source, target))
+                    let (bytes, files) = Transfers.measure(target)
+                    job.bytesDone += bytes
+                    job.filesDone += files
+                } else {
+                    // Own an isolated staging directory so errors/cancellation never
+                    // expose a partial destination or remove an unrelated existing file.
+                    let staging = destination.appendingPathComponent(".winexp-transfer-" + UUID().uuidString)
+                    try fm.createDirectory(at: staging, withIntermediateDirectories: false)
+                    defer { try? fm.removeItem(at: staging) }
+                    let staged = staging.appendingPathComponent(source.lastPathComponent)
+                    try copyTree(source, to: staged, job: &job)
+                    try checkCancellation(job.id)
+                    let replaced = job.replaceExisting && (try? fm.attributesOfItem(atPath: target.path)) != nil
+                        ? try Ops.trashChecked([target]) : []
+                    do {
+                        try fm.moveItem(at: staged, to: target)
+                    } catch {
+                        try? Ops.movePairs(replaced.map { (from: $0.trashed, to: $0.original) })
+                        throw error
+                    }
+                    if job.kind == .move {
+                        // Cancellation here leaves a complete copy and the original.
+                        // It must never delete the original after an incomplete copy.
+                        do {
+                            try checkCancellation(job.id)
+                            try fm.removeItem(at: source)
+                        } catch {
+                            job.created.append(target)
+                            throw error
+                        }
+                        job.moved.append((source, target))
+                    } else {
+                        job.created.append(target)
+                    }
+                }
+                let done = job.bytesDone, count = job.filesDone
+                update(job.id) {
+                    $0.bytesDone = done; $0.filesDone = count
+                    $0.currentName = source.lastPathComponent
+                }
+            }
+            job.state = .finished
+            job.bytesDone = job.bytesTotal
+        } catch CopyError.cancelled {
+            job.state = .cancelled
+        } catch {
+            job.state = .failed(error.localizedDescription)
+        }
         return job
     }
 
-    /// Copies a file or directory, reporting progress as it goes.
     private func copyTree(_ source: URL, to target: URL, job: inout TransferJob) throws {
+        try checkCancellation(job.id)
         let fm = FileManager.default
-        var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: source.path, isDirectory: &isDir) else { return }
-
-        if isDir.boolValue && !Transfers.isPackage(source) {
-            try fm.createDirectory(at: target, withIntermediateDirectories: true)
-            let children = (try? fm.contentsOfDirectory(at: source, includingPropertiesForKeys: nil))
-                ?? []
+        let attributes = try fm.attributesOfItem(atPath: source.path)
+        let type = attributes[.type] as? FileAttributeType
+        if type == .typeSymbolicLink {
+            // Do not dereference links, including links to directories or missing targets.
+            let link = try fm.destinationOfSymbolicLink(atPath: source.path)
+            try fm.createSymbolicLink(atPath: target.path, withDestinationPath: link)
+            job.filesDone += 1
+        } else if type == .typeDirectory {
+            try fm.createDirectory(at: target, withIntermediateDirectories: false)
+            let children = try fm.contentsOfDirectory(at: source, includingPropertiesForKeys: nil)
             for child in children {
-                if isCancelled(job.id) { return }
-                try copyTree(child, to: target.appendingPathComponent(child.lastPathComponent),
-                             job: &job)
+                try copyTree(child, to: target.appendingPathComponent(child.lastPathComponent), job: &job)
             }
-        } else {
+            try copyMetadata(source, to: target)
+            job.filesDone += 1
+        } else if type == .typeRegular {
             try copyFile(source, to: target, job: &job)
+        } else {
+            try fm.copyItem(at: source, to: target)
+            job.filesDone += 1
+        }
+        try checkCancellation(job.id)
+    }
+
+    private func copyMetadata(_ source: URL, to target: URL) throws {
+        let flags = copyfile_flags_t(COPYFILE_METADATA | COPYFILE_NOFOLLOW_SRC | COPYFILE_NOFOLLOW_DST)
+        guard copyfile(source.path, target.path, nil, flags) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
     }
 
     private func copyFile(_ source: URL, to target: URL, job: inout TransferJob) throws {
-        let fm = FileManager.default
         let id = job.id
         update(id) { $0.currentName = source.lastPathComponent }
-
-        // Packages and anything unreadable as a stream fall back to a plain copy.
-        guard let input = try? FileHandle(forReadingFrom: source) else {
-            try fm.copyItem(at: source, to: target)
-            job.filesDone += 1
-            update(id) { $0.filesDone += 1 }
-            return
-        }
+        let input = try FileHandle(forReadingFrom: source)
         defer { try? input.close() }
-
-        fm.createFile(atPath: target.path, contents: nil)
-        guard let output = try? FileHandle(forWritingTo: target) else {
-            try? input.close()
-            try fm.copyItem(at: source, to: target)
-            return
-        }
+        let descriptor = open(target.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let output = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         defer { try? output.close() }
-
-        let chunkSize = 1 << 20          // 1 MB
         var sinceUpdate: Int64 = 0
         while true {
-            if isCancelled(id) { return }
-            let chunk = input.readData(ofLength: chunkSize)
-            if chunk.isEmpty { break }
-            output.write(chunk)
+            try checkCancellation(id)
+            guard let chunk = try input.read(upToCount: 1 << 20), !chunk.isEmpty else { break }
+            try output.write(contentsOf: chunk)
             job.bytesDone += Int64(chunk.count)
             sinceUpdate += Int64(chunk.count)
-            // Throttle so the UI isn't flooded on fast disks.
-            if sinceUpdate > 4 << 20 {
+            if sinceUpdate >= 4 << 20 {
                 let done = job.bytesDone
                 sinceUpdate = 0
                 update(id) { $0.bytesDone = done }
             }
         }
-
+        try output.synchronize()
+        try checkCancellation(id)
+        try copyMetadata(source, to: target)
         job.filesDone += 1
         let done = job.bytesDone, files = job.filesDone
         update(id) { $0.bytesDone = done; $0.filesDone = files }
-
-        // Carry over the modification date, as a copy should.
-        if let attrs = try? fm.attributesOfItem(atPath: source.path),
-           let modified = attrs[.modificationDate] {
-            try? fm.setAttributes([.modificationDate: modified], ofItemAtPath: target.path)
-        }
     }
+
 }
 
 // MARK: - Helpers
 
 enum Transfers {
+    /// Resolve aliases in the parent directory without dereferencing the entry
+    /// itself: two symlinks to one target are still distinct selectable files.
+    static func entryPath(_ url: URL) -> String {
+        url.deletingLastPathComponent().resolvingSymlinksInPath()
+            .appendingPathComponent(url.lastPathComponent).standardizedFileURL.path
+    }
+
+    static func sameDirectory(_ a: URL, _ b: URL) -> Bool {
+        a.resolvingSymlinksInPath().standardizedFileURL.path == b.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    /// Validate every entry point, not just drag-and-drop. Resolve directory
+    /// aliases so a symlink to a descendant cannot bypass the containment check.
+    static func validate(_ sources: [URL], destination: URL) throws {
+        let fm = FileManager.default
+        guard (try destination.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey])).isDirectory == true else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
+        let dest = destination.resolvingSymlinksInPath().standardizedFileURL.path
+        for source in sources {
+            let attributes = try fm.attributesOfItem(atPath: source.path)
+            if attributes[.type] as? FileAttributeType == .typeDirectory {
+                let path = source.resolvingSymlinksInPath().standardizedFileURL.path
+                if dest == path || dest.hasPrefix(path == "/" ? "/" : path + "/") {
+                    throw NSError(domain: "FileExplorer.Transfer", code: 1,
+                                  userInfo: [NSLocalizedDescriptionKey: L("A folder cannot be copied or moved into itself.")])
+                }
+            }
+        }
+    }
+
     static func measure(_ url: URL) -> (bytes: Int64, files: Int) {
         let fm = FileManager.default
         var isDir: ObjCBool = false
+        if let attrs = try? fm.attributesOfItem(atPath: url.path),
+           attrs[.type] as? FileAttributeType == .typeSymbolicLink {
+            return (0, 1)
+        }
         guard fm.fileExists(atPath: url.path, isDirectory: &isDir) else { return (0, 0) }
-        if !isDir.boolValue || isPackage(url) {
+        if !isDir.boolValue {
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             return (Int64(size), 1)
         }
-        var bytes: Int64 = 0, files = 0
-        let walker = fm.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
+        var bytes: Int64 = 0, files = 1
+        let walker = fm.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey, .isSymbolicLinkKey],
                                    options: [], errorHandler: { _, _ in true })
         while let child = walker?.nextObject() as? URL {
-            let values = try? child.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
-            if values?.isDirectory == true { continue }
-            bytes += Int64(values?.fileSize ?? 0)
+            let values = try? child.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey, .isSymbolicLinkKey])
             files += 1
+            if values?.isDirectory == true { continue }
+            if values?.isSymbolicLink != true { bytes += Int64(values?.fileSize ?? 0) }
         }
         return (bytes, max(files, 1))
     }
