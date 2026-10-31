@@ -24,18 +24,27 @@ struct NavPane: View {
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(nodes) { node in
-                    if node.spacerAbove { Color.clear.frame(height: 10) }
+                    if node.spacerAbove {
+                        Rectangle()
+                            .fill(Win.divider)
+                            .frame(height: 1)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 12)
+                    }
                     NavRow(node: node, ex: ex, menus: menus,
                            selected: isSelected(node),
                            expanded: ex.navExpanded.contains(node.id))
                 }
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 10)
         }
         .scrollIndicators(.automatic)
         .frame(maxHeight: .infinity)
-        .background(Win.sidebar)
+        .background {
+            BackdropMaterial(material: .sidebar)
+                .overlay(Win.sidebar.opacity(0.96))
+        }
     }
 
     private func isSelected(_ node: NavNode) -> Bool {
@@ -135,7 +144,7 @@ struct NavRow: View {
             }
 
             Text(node.title)
-                .font(Win.body(13))
+                .font(Win.body(13, weight: selected ? .medium : .regular))
                 .foregroundStyle(Win.text)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -151,7 +160,7 @@ struct NavRow: View {
         .frame(height: 32)
         .padding(.leading, 4)
         .background(
-            WinRR(radius: 4)
+            WinRR(radius: 7)
                 .fill(selected ? Win.selected : (hovering ? Win.subtleHover : .clear))
         )
         .overlay(alignment: .leading) {
@@ -194,8 +203,8 @@ struct NavRow: View {
         let settings = Settings.shared
         let pinned = settings.isPinned(url) && !settings.hiddenPlaces.contains(url.path)
         entries.append(.sep())
-        entries.append(MenuEntry(title: pinned ? L("Unpin from Quick access") : L("Pin to Quick access"),
-                                 icon: pinned ? .unpin : .pin) {
+        entries.append(MenuEntry(title: (settings.isFinderFavorite(url) && !settings.bidirectionalFinderFavorites) ? L("Managed by Finder") : (pinned ? L("Unpin from Quick access") : L("Pin to Quick access")),
+                                 icon: pinned ? .unpin : .pin, enabled: !settings.finderWritePending && (!settings.isFinderFavorite(url) || settings.bidirectionalFinderFavorites)) {
             if pinned { settings.unpin(url) } else { settings.pin(url) }
         })
         entries.append(MenuEntry(title: L("Change icon…"), icon: .palette) {

@@ -63,6 +63,7 @@ struct SavedWindow: Codable {
     var right: SavedPane?
     var activeSide: String
     var splitRatio: Double
+    var sidebarWidth: Double?
     var frame: String
 
     init(window: NSWindow, model: WindowModel) {
@@ -70,6 +71,7 @@ struct SavedWindow: Codable {
         right = model.right.map { SavedPane($0) }
         activeSide = model.activeSide.rawValue
         splitRatio = Double(model.splitRatio)
+        sidebarWidth = Double(model.sidebarWidth)
         frame = NSStringFromRect(window.frame)
     }
 
@@ -78,6 +80,11 @@ struct SavedWindow: Codable {
         if model.dual != (right != nil) { model.toggleDual() }
         if let right, let pane = model.right { right.restore(into: pane) }
         model.splitRatio = splitRatio.isFinite ? CGFloat(min(max(splitRatio, 0.2), 0.8)) : 0.5
+        if let sidebarWidth, sidebarWidth.isFinite {
+            model.sidebarWidth = CGFloat(min(max(sidebarWidth, 120), 380))
+        } else {
+            model.sidebarWidth = Win.M.sidebarWidth
+        }
         model.activate(PaneSide(rawValue: activeSide) ?? .left)
     }
 }

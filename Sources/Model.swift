@@ -239,14 +239,24 @@ enum Places {
         Set(defaultPinned.compactMap { $0.url?.path })
     }
 
-    /// Default pins minus the ones the user removed, plus the ones they added.
+    /// Finder order when enabled, followed by local pins; otherwise use local defaults.
     static var quickAccess: [Place] {
         let settings = Settings.shared
-        var list = defaultPinned.filter { p in
-            guard let path = p.url?.path else { return true }
-            return !settings.hiddenPlaces.contains(path)
+        var list: [Place]
+        if settings.syncFinderFavorites, let favorites = settings.finderFavorites {
+            list = favorites.map { favorite in
+                let existing = defaultPinned.first { $0.url?.path == favorite.url.path }
+                return Place(id: existing?.id ?? "finder:\(favorite.url.path)",
+                             title: favorite.name ?? displayName(for: favorite.url),
+                             icon: icon(for: favorite.url), url: favorite.url, accent: accentFor(favorite.url))
+            }
+        } else {
+            list = defaultPinned.filter { p in
+                guard let path = p.url?.path else { return true }
+                return !settings.hiddenPlaces.contains(path)
+            }
         }
-        for path in settings.pinned {
+        for path in settings.pinned where !settings.hiddenPlaces.contains(path) {
             let url = URL(fileURLWithPath: path)
             guard !list.contains(where: { $0.url?.path == path }) else { continue }
             list.append(Place(id: "pin:\(path)", title: displayName(for: url),
@@ -272,7 +282,7 @@ enum Places {
             Place(id: "home", title: L("Home"), icon: .home, url: nil, accent: .orange, special: .home),
             Place(id: "gallery", title: L("Gallery"), icon: .gallery, url: pictures, accent: .blue, special: .gallery),
         ]
-        if let od = oneDrive {
+        if let od = oneDrive, !quickAccess.contains(where: { $0.url?.path == od.path }) {
             list.append(Place(id: "onedrive", title: "OneDrive", icon: .cloud, url: od, accent: .blue))
         }
         list.append(contentsOf: quickAccess)
@@ -400,6 +410,8 @@ final class Prefs: ObservableObject {
     static let shared = Prefs()
     private let d = Store.defaults
 
+    @Published var autoCleanJunk: Bool { didSet { d.set(autoCleanJunk, forKey: "autoCleanJunk") } }
+    @Published var cleanOldTemporaryFiles: Bool { didSet { d.set(cleanOldTemporaryFiles, forKey: "cleanOldTemporaryFiles") } }
     @Published var showHidden: Bool { didSet { d.set(showHidden, forKey: "showHidden") } }
     @Published var showExtensions: Bool { didSet { d.set(showExtensions, forKey: "showExtensions") } }
     @Published var showDetailsPane: Bool { didSet { d.set(showDetailsPane, forKey: "showDetailsPane") } }
@@ -418,12 +430,15 @@ final class Prefs: ObservableObject {
 
     private init() {
         d.register(defaults: [
+            "autoCleanJunk": true, "cleanOldTemporaryFiles": false,
             "showHidden": false, "showExtensions": true, "showDetailsPane": false,
             "showNavPane": true, "showPreviewPane": false, "viewMode": ViewMode.details.rawValue,
             "sortKey": SortKey.name.rawValue, "sortAscending": true, "groupBy": "(None)",
             "itemCheckBoxes": false, "compactMode": false, "showAccountStatus": true,
             "dualPane": false, "showShelf": false, "alternatingRowBackgrounds": true,
         ])
+        autoCleanJunk = d.bool(forKey: "autoCleanJunk")
+        cleanOldTemporaryFiles = d.bool(forKey: "cleanOldTemporaryFiles")
         showHidden = d.bool(forKey: "showHidden")
         showExtensions = d.bool(forKey: "showExtensions")
         showDetailsPane = d.bool(forKey: "showDetailsPane")

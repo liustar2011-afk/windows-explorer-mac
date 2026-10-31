@@ -314,6 +314,12 @@ final class Settings: ObservableObject {
     @Published var accentID: String { didSet { save() } }
     @Published var bindings: [String: [KeyChord]] { didSet { save() } }
     @Published var folderStyles: [String: FolderStyle] { didSet { save() } }
+    @Published var bidirectionalFinderFavorites: Bool { didSet { save() } }
+    @Published var finderWriteError: String? = nil
+    @Published var finderWritePending = false
+    @Published var syncFinderFavorites: Bool { didSet { save() } }
+    @Published var finderFavorites: [FinderFavorite]? = nil
+    @Published var finderSyncStatus: String? = nil
     @Published var pinned: [String] { didSet { save() } }
     @Published var hiddenPlaces: Set<String> { didSet { save() } }
 
@@ -340,6 +346,8 @@ final class Settings: ObservableObject {
         accentID = d.string(forKey: "accentID") ?? "blue"
         bindings = Settings.decode([String: [KeyChord]].self, d.data(forKey: "bindings")) ?? [:]
         folderStyles = Settings.decode([String: FolderStyle].self, d.data(forKey: "folderStyles")) ?? [:]
+        bidirectionalFinderFavorites = ProcessInfo.processInfo.environment["WINEXP_SELFTEST"] == nil && (d.object(forKey: "bidirectionalFinderFavorites") as? Bool ?? true)
+        syncFinderFavorites = d.object(forKey: "syncFinderFavorites") as? Bool ?? true
         pinned = d.stringArray(forKey: "pinned") ?? []
         hiddenPlaces = Set(d.stringArray(forKey: "hiddenPlaces") ?? [])
     }
@@ -356,6 +364,8 @@ final class Settings: ObservableObject {
         d.set(accentID, forKey: "accentID")
         d.set(try? JSONEncoder().encode(bindings), forKey: "bindings")
         d.set(try? JSONEncoder().encode(folderStyles), forKey: "folderStyles")
+        d.set(bidirectionalFinderFavorites, forKey: "bidirectionalFinderFavorites")
+        d.set(syncFinderFavorites, forKey: "syncFinderFavorites")
         d.set(pinned, forKey: "pinned")
         d.set(Array(hiddenPlaces), forKey: "hiddenPlaces")
     }
@@ -416,17 +426,34 @@ final class Settings: ObservableObject {
 
     // MARK: Pinning
 
+    func isFinderFavorite(_ url: URL) -> Bool {
+        syncFinderFavorites && finderFavorites?.contains { $0.url.path == url.standardizedFileURL.path } == true
+    }
+
     func isPinned(_ url: URL) -> Bool {
-        pinned.contains(url.path) || Places.defaultPinnedPaths.contains(url.path)
+        if isFinderFavorite(url) { return true }
+        if syncFinderFavorites && finderFavorites != nil { return pinned.contains(url.path) }
+        return pinned.contains(url.path) || Places.defaultPinnedPaths.contains(url.path)
     }
 
     func pin(_ url: URL) {
+        if syncFinderFavorites && bidirectionalFinderFavorites {
+            FinderFavoritesSync.shared.change(url, operation: "add") { self.hiddenPlaces.remove(url.path) }
+            return
+        }
         guard !pinned.contains(url.path) else { return }
         hiddenPlaces.remove(url.path)
         pinned.append(url.path)
     }
 
     func unpin(_ url: URL) {
+        if syncFinderFavorites && bidirectionalFinderFavorites && isFinderFavorite(url) {
+            FinderFavoritesSync.shared.change(url, operation: "remove") {
+                self.pinned.removeAll { $0 == url.path }
+                if Places.defaultPinnedPaths.contains(url.path) { self.hiddenPlaces.insert(url.path) }
+            }
+            return
+        }
         pinned.removeAll { $0 == url.path }
         if Places.defaultPinnedPaths.contains(url.path) { hiddenPlaces.insert(url.path) }
     }

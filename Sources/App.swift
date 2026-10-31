@@ -99,6 +99,7 @@ final class AppState: NSObject, NSWindowDelegate {
         window.standardWindowButton(.closeButton)?.isHidden = true
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
+        window.acceptsMouseMovedEvents = true
         window.isMovableByWindowBackground = false
         window.minSize = NSSize(width: 780, height: 480)
         window.isOpaque = false
@@ -156,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pendingURLs: [URL] = []
     private var languageObserver: Any?
     private var keyMonitor: Any?
+    private var hoverMonitor: Any?
     private var scrollMonitor: Any?
     private var rightClickMonitor: Any?
     private var marqueeMonitor: Any?
@@ -172,6 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Settings.shared.theme = theme
         }
         Settings.shared.applyTheme()
+        FinderFavoritesSync.shared.start()
         if env["WINEXP_TEST"] == "drop" { DropHighlight.forceOn = true }
         let start: Location = env["WINEXP_START"].map { .folder(URL(fileURLWithPath: $0)) } ?? .home
         if env["WINEXP_START"] != nil || env["WINEXP_SELFTEST"] != nil
@@ -305,12 +308,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if event.type == .leftMouseDown {
                 RightClickRouter.shared.routeSelection(event)
             }
+            if RightClickRouter.shared.routeActivation(event) { return nil }
             return MarqueeController.shared.handle(event) ? nil : event
         }
         rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { event in
             RightClickRouter.shared.route(event) ? nil : event
         }
+        hoverMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { event in
+            FileHover.shared.handle(event)
+            return event
+        }
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            FileHover.shared.clearForScroll()
             // Ctrl+wheel cycles icon sizes, as in Explorer.
             guard event.modifierFlags.contains(.control) || event.modifierFlags.contains(.command) else {
                 return event

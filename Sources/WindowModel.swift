@@ -11,6 +11,7 @@ final class WindowModel: ObservableObject {
     @Published private(set) var activeSide: PaneSide = .left
     /// Fraction of the width given to the left pane.
     @Published var splitRatio: CGFloat = 0.5
+    @Published var sidebarWidth: CGFloat = Win.M.sidebarWidth
 
     var dual: Bool { right != nil }
     var active: Explorer { activeSide == .right ? (right ?? left) : left }

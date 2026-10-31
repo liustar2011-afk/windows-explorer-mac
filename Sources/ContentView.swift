@@ -8,7 +8,6 @@ struct ContentView: View {
     @ObservedObject private var prefs = Prefs.shared
     @ObservedObject private var settings = Settings.shared
     @ObservedObject private var transfers = TransferQueue.shared
-    @State private var sidebarWidth: CGFloat = Win.M.sidebarWidth
 
     /// The pane the chrome is currently driving.
     private var ex: Explorer { model.active }
@@ -32,10 +31,14 @@ struct ContentView: View {
                     HStack(spacing: 0) {
                         if prefs.showNavPane {
                             NavPane(ex: ex, menus: menus)
-                                .frame(width: sidebarWidth)
-                            SplitHandle(width: $sidebarWidth, min: 120, max: 380)
+                                .frame(width: model.sidebarWidth)
+                            SplitHandle(width: $model.sidebarWidth, min: 120, max: 380)
                         }
                         panes()
+                            .clipShape(WinRR(radius: 10))
+                            .shadow(color: Win.surfaceShadow, radius: 3, x: 0, y: 1)
+                            .padding(8)
+                            .background(Win.workspace)
                         if prefs.showShelf { ShelfPane(ex: ex) }
                         if prefs.showPreviewPane { PreviewPane(ex: ex) }
                         if prefs.showDetailsPane { DetailsPane(ex: ex) }
@@ -77,12 +80,6 @@ struct ContentView: View {
                 DialogHost(ex: ex, model: model, maxHeight: max(200, geo.size.height - 170))
             }
             .coordinateSpace(name: "root")
-            .background {
-                VStack(spacing: 0) {
-                    Color.clear.frame(height: Win.M.tabStripHeight)
-                    Win.chrome
-                }
-            }
             .ignoresSafeArea(.all, edges: .all)
             .onAppear { runTestHook() }
             .environment(\.locale, Localization.locale)
@@ -138,6 +135,8 @@ struct ContentView: View {
                 ex.sheet = .settings
             case "dialog:settings":
                 ex.sheet = .settings
+            case "tabs:overflow":
+                for _ in 0..<19 { ex.openTab() }
             case "dual":
                 if !model.dual { model.toggleDual() }
                 Prefs.shared.showShelf = true
@@ -334,6 +333,7 @@ struct PaneView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
+            .background(Win.chrome)
             .clipped()
             .overlay(alignment: .top) {
                 Rectangle().fill(isActive ? Win.accent : Color.clear).frame(height: 2)
@@ -389,6 +389,7 @@ struct SplitHandle: View {
         Rectangle()
             .fill(Win.divider)
             .frame(width: 1)
+            .background(Win.chrome)
             .overlay(
                 Rectangle().fill(Color.clear).frame(width: 8)
                     .contentShape(Rectangle())

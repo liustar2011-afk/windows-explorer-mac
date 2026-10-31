@@ -197,6 +197,8 @@ enum SelfTest {
         checkPanes(root: root, sub: sub)
         checkColumnFitting()
         checkMarquee(ex: ex, root: root)
+        checkFinderFavorites(root: root)
+        checkJunkCleanup(root: root)
         checkBatchRename()
         checkArchives(root: root)
         checkCompare(root: root, sub: sub)
@@ -777,6 +779,7 @@ enum SelfTest {
         sessionModel.right?.go(to: .network)
         sessionModel.activate(.right)
         sessionModel.splitRatio = 0.65
+        sessionModel.sidebarWidth = 310
         let original = WindowSession.saved
         WindowSession.saved = [SavedWindow(window: window, model: sessionModel)]
         let restored = WindowModel()
@@ -790,6 +793,22 @@ enum SelfTest {
                   && restored.right?.tab.location == .network
                   && abs(restored.splitRatio - 0.65) < 0.001)
             check("session preserves window geometry", saved.frame == NSStringFromRect(window.frame))
+            let widthModel = WindowModel()
+            saved.restore(into: widthModel)
+            check("session restores navigation pane width", widthModel.sidebarWidth == 310)
+            var legacy = saved
+            legacy.sidebarWidth = nil
+            if let data = try? JSONEncoder().encode(legacy),
+               let decoded = try? JSONDecoder().decode(SavedWindow.self, from: data) {
+                decoded.restore(into: widthModel)
+                check("older sessions use the default navigation width",
+                      widthModel.sidebarWidth == Win.M.sidebarWidth)
+            } else { check("older sessions still decode", false) }
+            var invalid = saved
+            invalid.sidebarWidth = 900
+            invalid.restore(into: widthModel)
+            check("session clamps navigation width", widthModel.sidebarWidth == 380)
+
         } else { check("session persists across encoding and decoding", false) }
         let missing = root.appendingPathComponent("missing-session-folder")
         check("session falls back to Home for missing folders",
@@ -801,6 +820,148 @@ enum SelfTest {
         check("session ignores corrupt saved data", WindowSession.saved.isEmpty)
         WindowSession.saved = original
 
+    }
+
+    private static func checkFinderFavorites(root: URL) {
+        check("Finder read authorization accepts only its own archive or directory",
+              FinderFavoritesSync.validAccessSelection(FinderFavoritesReader.directory)
+              && FinderFavoritesSync.validAccessSelection(FinderFavoritesReader.directory.appendingPathComponent(FinderFavoritesReader.filenames[0]))
+              && !FinderFavoritesSync.validAccessSelection(root)
+              && !FinderFavoritesSync.validAccessSelection(FinderFavoritesReader.directory.appendingPathComponent("unrelated-file")))
+        let settings = Settings.shared
+        let oldEnabled = settings.syncFinderFavorites
+        let oldFavorites = settings.finderFavorites
+        let oldPinned = settings.pinned
+        let oldHidden = settings.hiddenPlaces
+        defer {
+            settings.syncFinderFavorites = oldEnabled
+            settings.finderFavorites = oldFavorites
+            settings.pinned = oldPinned
+            settings.hiddenPlaces = oldHidden
+        }
+        let first = root.appendingPathComponent("favorite-first")
+        let second = root.appendingPathComponent("favorite-second")
+        let local = root.appendingPathComponent("favorite-local")
+        for url in [first, second, local] { try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
+        defer { for url in [first, second, local] { try? FileManager.default.removeItem(at: url) } }
+        do {
+            let a = try first.bookmarkData()
+            let b = try second.bookmarkData()
+            let file = try root.appendingPathComponent("alpha.txt").bookmarkData()
+            let items: [[String: Any]] = [["Bookmark": b, "Name": "Second"],
+                ["Bookmark": a], ["Bookmark": b], ["Bookmark": file],
+                ["Bookmark": Data("invalid bookmark".utf8)]]
+            let data = try NSKeyedArchiver.archivedData(withRootObject: ["items": items] as NSDictionary, requiringSecureCoding: true)
+            let decoded = try FinderFavoritesReader.decode(data)
+            check("Finder favorite bookmarks preserve source order and custom labels",
+                  decoded.map { $0.url.path } == [second.path, first.path] && decoded.first?.name == "Second")
+            check("Finder favorite decoding skips duplicates, files and broken bookmarks", decoded.count == 2)
+            let empty = try NSKeyedArchiver.archivedData(withRootObject: ["items": []] as NSDictionary, requiringSecureCoding: true)
+            check("an empty Finder list decodes as an empty snapshot", try FinderFavoritesReader.decode(empty).isEmpty)
+            let invalid = try NSKeyedArchiver.archivedData(withRootObject: ["other": []] as NSDictionary, requiringSecureCoding: true)
+            do { _ = try FinderFavoritesReader.decode(invalid); check("unsupported Finder archives report a failure", false) }
+            catch { check("unsupported Finder archives report a failure", true) }
+            settings.syncFinderFavorites = true
+            settings.finderFavorites = decoded
+            settings.pinned = [first.path, local.path]
+            settings.hiddenPlaces = [second.path]
+            check("Finder order precedes local pins without duplicates",
+                  Places.quickAccess.compactMap { $0.url?.path } == [second.path, first.path, local.path])
+            check("Finder owns synchronized favorites despite old local hidden flags", settings.isFinderFavorite(second))
+            settings.finderFavorites = [decoded[1]]
+            check("removing a Finder favorite removes the synchronized entry",
+                  !Places.quickAccess.contains { $0.url?.path == second.path })
+            settings.finderFavorites = []
+            check("clearing Finder favorites retains local pins without restoring default pins",
+                  Places.quickAccess.compactMap { $0.url?.path } == [first.path, local.path])
+            settings.syncFinderFavorites = false
+            check("disabling Finder sync restores local defaults", Places.quickAccess.contains { $0.url?.path == Places.desktop.path })
+            settings.finderFavorites = nil
+            settings.syncFinderFavorites = true
+            check("unavailable Finder data preserves local favorites", Places.quickAccess.contains { $0.url?.path == local.path })
+            let sources = root.appendingPathComponent("finder-list-sources")
+            try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: sources) }
+            for name in FinderFavoritesReader.filenames { try data.write(to: sources.appendingPathComponent(name)) }
+            check("Finder sync prefers the newest supported archive format",
+                  FinderFavoritesReader.source(in: sources)?.lastPathComponent == FinderFavoritesReader.filenames[0])
+        } catch { check("Finder favorite fixtures can be decoded: \(error)", false) }
+    }
+
+    private static func checkJunkCleanup(root: URL) {
+        let fm = FileManager.default
+        let folder = root.appendingPathComponent("cleanup-fixtures")
+        let recovery = root.appendingPathComponent("cleanup-recovery")
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: recovery, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: folder); try? fm.removeItem(at: recovery) }
+        func write(_ name: String) {
+            try? Data("fixture".utf8).write(to: folder.appendingPathComponent(name))
+        }
+        for name in [".DS_Store", "Thumbs.db", "desktop.ini", "document.docx", ".DS_Store.bak",
+                     "download.crdownload", "document.bak", "._document.docx", "recent.tmp", "old.temp"] { write(name) }
+        let now = Date()
+        try? fm.setAttributes([.modificationDate: now.addingTimeInterval(-31 * 86400)],
+                              ofItemAtPath: folder.appendingPathComponent("old.temp").path)
+        let nested = folder.appendingPathComponent("nested")
+        try? fm.createDirectory(at: nested, withIntermediateDirectories: true)
+        try? Data("nested".utf8).write(to: nested.appendingPathComponent(".DS_Store"))
+        let fakeDirectory = folder.appendingPathComponent("folder.tmp")
+        try? fm.createDirectory(at: fakeDirectory, withIntermediateDirectories: true)
+        let linkFolder = folder.appendingPathComponent("links")
+        try? fm.createDirectory(at: linkFolder, withIntermediateDirectories: true)
+        let link = linkFolder.appendingPathComponent("Thumbs.db")
+        try? fm.createSymbolicLink(at: link, withDestinationURL: folder.appendingPathComponent("document.docx"))
+        check("junk rules preserve symlinks", JunkCleaner.candidate(link) == nil)
+        check("junk rules preserve directories even with temporary extensions",
+              JunkCleaner.candidate(fakeDirectory, includeOldTemporaryFiles: true) == nil)
+        let names = Set((try? JunkCleaner.scan(folder, now: now))?.map { $0.url.lastPathComponent } ?? [])
+        check("default junk scan matches only explicit directory metadata", names == [".DS_Store", "Thumbs.db", "desktop.ini"])
+        let expanded = Set((try? JunkCleaner.scan(folder, includeOldTemporaryFiles: true, now: now))?.map { $0.url.lastPathComponent } ?? [])
+        check("optional temporary cleanup requires 30 days without modification", expanded == names.union(["old.temp"]))
+        check("junk scan never traverses subfolders", !names.contains("nested"))
+        let trashFolder = folder.appendingPathComponent(".Trash")
+        try? fm.createDirectory(at: trashFolder, withIntermediateDirectories: true)
+        check("automatic cleanup excludes Trash and system directories",
+              !JunkCleaner.eligibleDirectory(trashFolder) && !JunkCleaner.eligibleDirectory(URL(fileURLWithPath: "/System")))
+        let package = folder.appendingPathComponent("Fixture.app/Contents")
+        try? fm.createDirectory(at: package, withIntermediateDirectories: true)
+        check("automatic cleanup excludes application bundle contents", !JunkCleaner.eligibleDirectory(package))
+        let cancelled = JunkCleaner.Job()
+        cancelled.cancel()
+        var attempts = 0
+        let cancelledResult = JunkCleaner.clean(folder, job: cancelled, trash: { url in attempts += 1; return url })
+        check("cancelled junk cleanup moves no files", cancelledResult.trashed.isEmpty && attempts == 0)
+        let failing = JunkCleaner.clean(folder, job: JunkCleaner.Job(), trash: { _ in throw CocoaError(.fileWriteNoPermission) })
+        check("junk cleanup reports failures and preserves files", failing.failures.count == 3 && failing.trashed.isEmpty)
+        let cleaned = JunkCleaner.clean(folder, job: JunkCleaner.Job(), now: now, trash: { url in
+            let destination = recovery.appendingPathComponent(url.lastPathComponent)
+            try fm.moveItem(at: url, to: destination)
+            return destination
+        })
+        check("junk cleanup records recoverable original and destination paths", cleaned.trashed.count == 3 && cleaned.failures.isEmpty)
+        check("junk cleanup preserves documents and nested metadata",
+              fm.fileExists(atPath: folder.appendingPathComponent("document.docx").path)
+              && fm.fileExists(atPath: nested.appendingPathComponent(".DS_Store").path)
+              && fm.fileExists(atPath: folder.appendingPathComponent("old.temp").path))
+        let undoExplorer = Explorer()
+        undoExplorer.go(to: folder)
+        undoExplorer.undoStack.append(.trash(items: cleaned.trashed))
+        undoExplorer.undo()
+        check("automatic junk cleanup can be undone as one action", names.allSatisfy { fm.fileExists(atPath: folder.appendingPathComponent($0).path) })
+        let scan = (try? JunkCleaner.scan(folder)) ?? []
+        if scan.count >= 2 {
+            let changed = scan[1].url
+            var moves = 0
+            let rechecked = JunkCleaner.clean(folder, job: JunkCleaner.Job(), trash: { url in
+                moves += 1
+                if moves == 1 { try Data("changed after scanning".utf8).write(to: changed) }
+                let destination = recovery.appendingPathComponent(url.lastPathComponent)
+                try fm.moveItem(at: url, to: destination)
+                return destination
+            })
+            check("junk cleanup skips files modified after scanning", rechecked.trashed.count == 2 && fm.fileExists(atPath: changed.path))
+        }
     }
 
     private static func checkRightClickRouting() {
@@ -818,13 +979,13 @@ enum SelfTest {
         let owner = NSObject()
         router.setContentFrame(CGRect(x: 0, y: 0, width: 400, height: 300), for: owner)
 
-        func rightClick(at point: CGPoint, type: NSEvent.EventType = .rightMouseDown) -> NSEvent? {
+        func rightClick(at point: CGPoint, type: NSEvent.EventType = .rightMouseDown, clicks: Int = 1) -> NSEvent? {
             // NSEvent locations use a bottom-left origin.
             NSEvent.mouseEvent(with: type,
                                location: CGPoint(x: point.x, y: 300 - point.y),
                                modifierFlags: [], timestamp: 0,
                                windowNumber: window.windowNumber, context: nil,
-                               eventNumber: 0, clickCount: 1, pressure: 1)
+                               eventNumber: 0, clickCount: clicks, pressure: 1)
         }
 
         check("a target registers itself when added to a window",
@@ -835,6 +996,96 @@ enum SelfTest {
         } else {
             check("a right-click on an item is routed to it", false)
         }
+
+        let rowExplorer = Explorer()
+        catcher.selectionOwner = rowExplorer
+        catcher.selectionID = "scroll-row"
+        check("selection frames are scoped to their pane",
+              router.itemFrames(for: rowExplorer)?["scroll-row"] == CGRect(x: 40, y: 60, width: 120, height: 40)
+              && router.itemFrames(for: Explorer()) == nil)
+        var opened = 0
+        catcher.onDoubleClick = { opened += 1 }
+        func clickEvent(_ type: NSEvent.EventType, _ count: Int, _ point: CGPoint = CGPoint(x: 100, y: 80)) {
+            if let event = rightClick(at: point, type: type, clicks: count) { router.routeActivation(event) }
+        }
+        clickEvent(.leftMouseDown, 1); clickEvent(.leftMouseUp, 1)
+        check("single click does not activate files", opened == 0)
+        // Selection can replace the native marker between clicks.
+        catcher.removeFromSuperview()
+        let rebuilt = RightClickCatcher.View(frame: catcher.frame)
+        rebuilt.selectionOwner = rowExplorer; rebuilt.selectionID = catcher.selectionID
+        rebuilt.onDoubleClick = { opened += 1 }
+        window.contentView?.addSubview(rebuilt)
+        clickEvent(.leftMouseDown, 2); clickEvent(.leftMouseUp, 2)
+        check("native double click survives a row redraw and opens exactly once", opened == 1)
+        clickEvent(.leftMouseUp, 2)
+        check("duplicate release cannot activate twice", opened == 1)
+        clickEvent(.leftMouseDown, 1); clickEvent(.leftMouseDown, 2)
+        clickEvent(.leftMouseDragged, 2); clickEvent(.leftMouseUp, 2)
+        check("dragging cancels double click activation", opened == 1)
+        clickEvent(.leftMouseDown, 1); clickEvent(.leftMouseDown, 2)
+        clickEvent(.leftMouseUp, 2, CGPoint(x: 300, y: 80))
+        check("releasing outside the file does not activate it", opened == 1)
+        clickEvent(.leftMouseDown, 1)
+        rebuilt.selectionID = "different-file"
+        clickEvent(.leftMouseDown, 2); clickEvent(.leftMouseUp, 2)
+        check("two clicks across different files cannot open the second file", opened == 1)
+        rebuilt.removeFromSuperview(); window.contentView?.addSubview(catcher)
+        catcher.onDoubleClick = nil
+        catcher.frame.origin.y = 120
+        check("selection reads row positions after scrolling without geometry callbacks",
+              router.itemFrames(for: rowExplorer)?["scroll-row"] == CGRect(x: 40, y: 120, width: 120, height: 40))
+        let marquee = MarqueeController.shared
+        marquee.setZone(CGRect(x: 0, y: 0, width: 400, height: 300), for: rowExplorer)
+        check("a moved native row cannot start a background selection band",
+              !marquee.begin(at: CGPoint(x: 100, y: 140), additive: false))
+        marquee.setZone(.zero, for: rowExplorer)
+        let hover = FileHover.shared
+        hover.reset()
+        defer { hover.reset() }
+        if let move = rightClick(at: CGPoint(x: 100, y: 140), type: .mouseMoved) {
+            hover.handle(move)
+            check("pointer movement highlights the file under the pointer",
+                  hover.isHovered("scroll-row", in: rowExplorer))
+            let nextRow = RightClickCatcher.View(frame: catcher.frame)
+            nextRow.selectionOwner = rowExplorer
+            nextRow.selectionID = "next-scroll-row"
+            catcher.frame.origin.y = 200
+            window.contentView?.addSubview(nextRow)
+            rowExplorer.tab.selection = ["scroll-row"]
+            hover.clearForScroll()
+            check("scrolling clears stale hover without clearing file selection",
+                  hover.target == nil && rowExplorer.tab.selection == ["scroll-row"])
+            hover.handle(move)
+            check("stationary pointer does not highlight a new row after scrolling",
+                  hover.target == nil)
+            if let moved = rightClick(at: CGPoint(x: 101, y: 140), type: .mouseMoved) {
+                hover.handle(moved)
+                check("moving the pointer after scrolling updates the file highlight",
+                      hover.isHovered("next-scroll-row", in: rowExplorer)
+                      && !hover.isHovered("scroll-row", in: rowExplorer))
+            }
+            if let outside = rightClick(at: CGPoint(x: 300, y: 140), type: .mouseMoved) {
+                hover.handle(outside)
+                check("moving outside file rows clears their hover", hover.target == nil)
+            }
+            nextRow.removeFromSuperview()
+            catcher.frame.origin.y = 120
+        } else {
+            check("can construct a pointer movement event", false)
+        }
+
+        catcher.isHidden = true
+        check("hidden rows are excluded from selection frames",
+              router.itemFrames(for: rowExplorer)?.isEmpty == true)
+        catcher.isHidden = false
+        catcher.removeFromSuperview()
+        check("detached rows are excluded from selection frames",
+              router.itemFrames(for: rowExplorer) == nil)
+        catcher.selectionOwner = nil
+        catcher.selectionID = nil
+        catcher.frame.origin.y = 60
+        window.contentView?.addSubview(catcher)
 
         // A flyout sits over file rows; clicking Copy must retain its original target.
         let overlay = RightClickCatcher.View(frame: window.contentView!.bounds)

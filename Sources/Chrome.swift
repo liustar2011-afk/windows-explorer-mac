@@ -10,34 +10,54 @@ struct TitleBar: View {
     @State private var zoomed = false
 
     var body: some View {
-        HStack(spacing: 0) {
-            if interfaceSettings.windowButtonsOnLeft { captionButtons }
-            HStack(spacing: 6) {
-                ForEach(Array(ex.tabs.enumerated()), id: \.element.id) { idx, t in
-                    TabChip(title: t.location.displayTitle, icon: t.location.icon,
-                            active: idx == ex.active,
-                            showClose: ex.tabs.count > 1 || idx == ex.active,
-                            onSelect: { ex.selectTab(idx) },
-                            onClose: { ex.closeTab(idx) })
+        GeometryReader { geometry in
+            // Bound the strip to the window so tab count cannot widen the page.
+            let tabWidth = max(0, min(CGFloat(ex.tabs.count) * 214 - 6,
+                                      geometry.size.width - 138 - 8 - 40 - 40))
+            HStack(spacing: 0) {
+                if interfaceSettings.windowButtonsOnLeft { captionButtons }
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(Array(ex.tabs.enumerated()), id: \.element.id) { idx, t in
+                                TabChip(title: t.location.displayTitle, icon: t.location.icon,
+                                        active: idx == ex.active,
+                                        showClose: ex.tabs.count > 1 || idx == ex.active,
+                                        onSelect: { ex.selectTab(idx) },
+                                        onClose: { ex.closeTab(idx) })
+                                    .id(t.id)
+                            }
+                        }
+                    }
+                    .frame(width: tabWidth, height: Win.M.tabStripHeight)
+                    .onAppear { proxy.scrollTo(ex.tab.id) }
+                    .onChange(of: ex.tab.id) { _, id in
+                        proxy.scrollTo(id)
+                    }
+                    .onChange(of: tabWidth) { _, _ in
+                        proxy.scrollTo(ex.tab.id)
+                    }
                 }
+                .padding(.leading, 8)
+
                 WinButton(tooltip: L("New tab (Ctrl+T)"), padding: 8, height: 28, corner: 7) {
                     ex.openTab()
                 } content: {
                     Glyph(icon: .plus, size: 12, color: Win.text, weight: 1.4)
                 }
-                .padding(.leading, 4)
+                .frame(width: 40)
+
+                WindowDragArea()
+                    .frame(minWidth: 40, maxWidth: .infinity, maxHeight: .infinity)
+
+                if !interfaceSettings.windowButtonsOnLeft { captionButtons }
             }
-            .padding(.leading, 8)
-
-            WindowDragArea()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            if !interfaceSettings.windowButtonsOnLeft { captionButtons }
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .frame(height: Win.M.tabStripHeight)
         .background {
-            TabBarMaterial()
-                .overlay(Win.tabStrip.opacity(0.22))
+            BackdropMaterial(material: .titlebar)
+                .overlay(Win.tabStrip.opacity(0.80))
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResizeNotification)) { _ in
             zoomed = NSApp.keyWindow?.isZoomed ?? false
@@ -58,16 +78,19 @@ HStack(spacing: 0) {
 }
 
 /// Native backdrop blur follows window activation and accessibility settings.
-private struct TabBarMaterial: NSViewRepresentable {
+struct BackdropMaterial: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
-        view.material = .titlebar
+        view.material = material
         view.blendingMode = .behindWindow
         view.state = .followsWindowActiveState
         return view
     }
 
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+        view.material = material
+    }
 }
 
 struct TabChip: View {
@@ -82,7 +105,7 @@ struct TabChip: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Glyph(icon: icon, size: 15, color: active ? Win.accent : Win.textSecondary, weight: 1.2)
+            Glyph(icon: icon, size: 15, color: active ? Win.text : Win.textSecondary, weight: 1.2)
             Text(title)
                 .font(Win.body(13, weight: active ? .medium : .regular))
                 .truncationMode(.middle)
@@ -111,11 +134,13 @@ struct TabChip: View {
         )
         .overlay {
             WinRR(radius: 8)
-                .strokeBorder(active ? Win.stroke : Color.clear, lineWidth: 0.5)
+                .strokeBorder(active ? Win.tabBorder : Color.clear, lineWidth: 0.5)
+                .allowsHitTesting(false)
         }
         .contentShape(WinRR(radius: 8))
         .help(title)
         .onHover { hovering = $0 }
+        .onTapGesture(count: 2, perform: onClose)
         .onTapGesture(perform: onSelect)
     }
 }
@@ -342,9 +367,6 @@ struct SearchBox: View {
         .frame(height: 32)
         .background(WinRR(radius: 4).fill(focused ? Win.fieldFocus : (hovering ? Win.fieldHover : Win.field)))
         .overlay(WinRR(radius: 4).stroke(focused ? Win.strokeStrong : Win.stroke, lineWidth: 1))
-        .overlay(alignment: .bottom) {
-            if focused { Rectangle().fill(Win.accent).frame(height: 2).padding(.horizontal, 1) }
-        }
         .onHover { hovering = $0 }
         .onReceive(NotificationCenter.default.publisher(for: .focusSearch)) { _ in focused = true }
     }
@@ -492,7 +514,7 @@ struct CommandBar: View {
         }
         .padding(.horizontal, 8)
         .frame(height: Win.M.commandBarHeight)
-        .background(Win.chrome)
+        .background(Win.commandBar)
         .overlay(alignment: .bottom) { Rectangle().fill(Win.divider).frame(height: 1) }
         .onPreferenceChange(FrameKey.self) { frames.merge($0, uniquingKeysWith: { _, b in b }) }
     }
@@ -626,6 +648,8 @@ struct CommandBar: View {
                           enabled: !ex.tab.selection.isEmpty) {
                     ex.sheet = .batchRename(ex.selectedItems)
                 },
+                MenuEntry(title: L("Automatically clean junk files"), icon: .delete,
+                          checked: prefs.autoCleanJunk) { ex.setAutomaticJunkCleanup(!prefs.autoCleanJunk) },
                 MenuEntry(title: L("Compare and sync folders"), icon: .view) { ex.sheet = .compare },
                 MenuEntry(title: L("Extract archive"), icon: .compress,
                           enabled: ex.isInsideArchive

@@ -42,8 +42,8 @@ enum ContextMenus {
             let settings = Settings.shared
             let pinned = settings.isPinned(url) && !settings.hiddenPlaces.contains(url.path)
             entries.append(.sep())
-            entries.append(MenuEntry(title: pinned ? L("Unpin from Quick access") : L("Pin to Quick access"),
-                                     icon: pinned ? .unpin : .pin) {
+            entries.append(MenuEntry(title: (settings.isFinderFavorite(url) && !settings.bidirectionalFinderFavorites) ? L("Managed by Finder") : (pinned ? L("Unpin from Quick access") : L("Pin to Quick access")),
+                                     icon: pinned ? .unpin : .pin, enabled: !settings.finderWritePending && (!settings.isFinderFavorite(url) || settings.bidirectionalFinderFavorites)) {
                 if pinned { settings.unpin(url) } else { settings.pin(url) }
             })
             entries.append(MenuEntry(title: L("Change icon…"), icon: .palette) {

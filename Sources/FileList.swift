@@ -12,6 +12,9 @@ import AppKit
 final class RightClickRouter {
     static let shared = RightClickRouter()
 
+    private var previousClick: String?
+    private var activationPress: String?
+
     private let targets = NSHashTable<RightClickCatcher.View>.weakObjects()
     /// Frame of each pane's file area, in root (window, top-left) coordinates.
     private var contentFrames: [ObjectIdentifier: CGRect] = [:]
@@ -36,6 +39,19 @@ final class RightClickRouter {
         guard let content = event.window?.contentView else { return event.locationInWindow }
         let p = event.locationInWindow
         return CGPoint(x: p.x, y: content.bounds.height - p.y)
+    }
+
+    /// Read native row positions only when selection needs them.
+    func itemFrames(for explorer: Explorer) -> [String: CGRect]? {
+        let rows = targets.allObjects.filter { $0.selectionOwner === explorer }
+        guard !rows.isEmpty else { return nil }
+        var frames: [String: CGRect] = [:]
+        for row in rows where !row.isHiddenOrHasHiddenAncestor {
+            if let id = row.selectionID, let frame = row.rootFrame {
+                frames[id] = frame
+            }
+        }
+        return frames
     }
 
     /// Menu shields take precedence; otherwise pick the smallest target under the pointer.
@@ -81,6 +97,36 @@ final class RightClickRouter {
         view.onMouseDown?(event)
     }
 
+    /// Use AppKit's click count, independent of SwiftUI row redraws and drag gestures.
+    /// Open on release only when both clicks and the release belong to the same file.
+    @discardableResult
+    func routeActivation(_ event: NSEvent) -> Bool {
+        func key(_ view: RightClickCatcher.View?) -> String? {
+            guard let view, !view.blocksFileSelection, view.onDoubleClick != nil,
+                  let owner = view.selectionOwner, let id = view.selectionID else { return nil }
+            return "\(event.windowNumber):\(ObjectIdentifier(owner)):\(owner.tab.id):\(id)"
+        }
+        switch event.type {
+        case .leftMouseDown:
+            let clicked = key(target(at: Self.rootPoint(event), in: event.window))
+            activationPress = event.clickCount == 2 && clicked == previousClick ? clicked : nil
+            previousClick = clicked
+        case .leftMouseDragged:
+            activationPress = nil
+            previousClick = nil
+        case .leftMouseUp:
+            let pressed = activationPress
+            activationPress = nil
+            guard event.clickCount == 2, let pressed,
+                  let view = target(at: Self.rootPoint(event), in: event.window),
+                  key(view) == pressed else { return false }
+            view.onDoubleClick?()
+            return true
+        default: break
+        }
+        return false
+    }
+
     /// Handles a right-click. Returns true when it was consumed.
     @discardableResult
     func route(_ event: NSEvent) -> Bool {
@@ -102,12 +148,18 @@ struct RightClickCatcher: NSViewRepresentable {
     @ObservedObject private var interfaceSettings = Settings.shared
     let onClick: (CGPoint) -> Void
     var onMouseDown: ((NSEvent) -> Void)? = nil
+    var onDoubleClick: (() -> Void)? = nil
     var blocksFileSelection = false
+    var selectionOwner: Explorer? = nil
+    var selectionID: String? = nil
 
     final class View: NSView {
         var onClick: ((CGPoint) -> Void)?
         var onMouseDown: ((NSEvent) -> Void)?
+        var onDoubleClick: (() -> Void)?
         var blocksFileSelection = false
+        weak var selectionOwner: Explorer?
+        var selectionID: String?
         override var isFlipped: Bool { true }
 
         /// Invisible to hit-testing: the router dispatches to it explicitly.
@@ -130,14 +182,19 @@ struct RightClickCatcher: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> View {
-        let v = View(); v.onClick = onClick; v.onMouseDown = onMouseDown
+        let v = View(); v.onClick = onClick; v.onMouseDown = onMouseDown; v.onDoubleClick = onDoubleClick
         v.blocksFileSelection = blocksFileSelection
+        v.selectionOwner = selectionOwner
+        v.selectionID = selectionID
         return v
     }
     func updateNSView(_ nsView: View, context: Context) {
         nsView.onClick = onClick
         nsView.onMouseDown = onMouseDown
+        nsView.onDoubleClick = onDoubleClick
         nsView.blocksFileSelection = blocksFileSelection
+        nsView.selectionOwner = selectionOwner
+        nsView.selectionID = selectionID
     }
 }
 
@@ -146,10 +203,15 @@ extension View {
     /// content and is invisible to SwiftUI hit-testing, so taps, drags and
     /// drops keep working exactly as before.
     func onRightClick(mouseDown: ((NSEvent) -> Void)? = nil,
+                      doubleClick: (() -> Void)? = nil,
                       blocksFileSelection: Bool = false,
+                      selectionOwner: Explorer? = nil,
+                      selectionID: String? = nil,
                       perform: @escaping (CGPoint) -> Void) -> some View {
-        background(RightClickCatcher(onClick: perform, onMouseDown: mouseDown,
-                                     blocksFileSelection: blocksFileSelection).allowsHitTesting(false))
+        background(RightClickCatcher(onClick: perform, onMouseDown: mouseDown, onDoubleClick: doubleClick,
+                                     blocksFileSelection: blocksFileSelection,
+                                     selectionOwner: selectionOwner,
+                                     selectionID: selectionID).allowsHitTesting(false))
     }
 }
 
@@ -189,9 +251,6 @@ struct FileArea: View {
                     RightClickRouter.shared.setContentFrame(f, for: ex)
                 }
         })
-        .onPreferenceChange(ItemFrameKey.self) { frames in
-            MarqueeController.shared.setItems(frames, for: ex)
-        }
         .overlay(
             Rectangle()
                 .strokeBorder(Win.accent.opacity(dropTargeted ? 0.85 : 0), lineWidth: 2)
@@ -247,10 +306,8 @@ struct ItemInteraction: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .marqueeItem(item.id)
             .dropHighlight(dropTargeted)
             .contentShape(Rectangle())
-            .onTapGesture(count: 2) { ex.open(item) }
             // Controls inside a row retain SwiftUI's normal click handling.
             .simultaneousGesture(TapGesture(count: 1).onEnded {
                 guard Prefs.shared.itemCheckBoxes || ex.tab.editing == item.id,
@@ -265,7 +322,8 @@ struct ItemInteraction: ViewModifier {
                 let f = event.modifierFlags
                 ex.select(item, extend: f.contains(.shift),
                           toggle: f.contains(.control) || f.contains(.command))
-            }) { p in
+            }, doubleClick: ex.tab.editing == item.id ? nil : { ex.open(item) },
+               selectionOwner: ex, selectionID: item.id) { p in
                 if !ex.tab.selection.contains(item.id) {
                     ex.select(item, extend: false, toggle: false)
                 }
@@ -335,7 +393,7 @@ struct DetailsView: View {
     @AppStorage("details.typeWidth", store: Store.defaults) private var typeWidth: Double = 140
     @AppStorage("details.sizeWidth", store: Store.defaults) private var sizeWidth: Double = 90
 
-    private var rowHeight: CGFloat { prefs.compactMode ? 24 : 32 }
+    private var rowHeight: CGFloat { prefs.compactMode ? 24 : 34 }
 
     var body: some View {
         GeometryReader { geo in
@@ -387,7 +445,8 @@ struct DetailsView: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 4)
-        .frame(height: 28)
+        .frame(height: 30)
+        .background(Win.listHeader)
         .coordinateSpace(name: "detailColumnHeader")
     }
 }
@@ -412,7 +471,7 @@ struct ColumnHeader: View {
                 HStack(spacing: 0) {
                     if trailing { Spacer(minLength: 0) }
                     Text(title)
-                        .font(Win.body(14))
+                        .font(Win.body(12, weight: .medium))
                         .foregroundStyle(Win.textSecondary)
                         .lineLimit(1)
                     if !trailing { Spacer(minLength: 0) }
@@ -497,10 +556,10 @@ struct DetailsRow: View {
     let height: CGFloat
     let columns: DetailColumns
     var alternating = false
-    @State private var hovering = false
     @ObservedObject private var prefs = Prefs.shared
 
     private var selected: Bool { ex.tab.selection.contains(item.id) }
+    private var highlighted: Bool { selected }
     private var cutOut: Bool { Clipboard.cutPaths.contains(item.url.path) }
 
     var body: some View {
@@ -519,7 +578,7 @@ struct DetailsRow: View {
                 } else {
                     Text(item.displayName)
                         .font(Win.body(14))
-                        .foregroundStyle(item.isHidden ? Win.textTertiary : Win.text)
+                        .foregroundStyle(highlighted ? Color.white : (item.isHidden ? Win.textTertiary : Win.text))
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .opacity(cutOut ? 0.45 : 1)
@@ -530,7 +589,7 @@ struct DetailsRow: View {
 
             if let width = columns.date {
                 Text(item.modifiedText)
-                    .font(Win.body(14)).foregroundStyle(Win.textSecondary)
+                    .font(Win.body(13)).foregroundStyle(highlighted ? Color.white : Win.fileMetadata)
                     .lineLimit(1)
                     .padding(.leading, 6)
                     .frame(width: width, alignment: .leading)
@@ -538,7 +597,7 @@ struct DetailsRow: View {
 
             if let width = columns.type {
                 Text(item.typeName)
-                    .font(Win.body(14)).foregroundStyle(Win.textSecondary)
+                    .font(Win.body(13)).foregroundStyle(highlighted ? Color.white : Win.fileMetadata)
                     .lineLimit(1)
                     .padding(.leading, 6)
                     .frame(width: width, alignment: .leading)
@@ -546,7 +605,7 @@ struct DetailsRow: View {
 
             if let width = columns.size {
                 Text(item.sizeText)
-                    .font(Win.body(14)).foregroundStyle(Win.textSecondary)
+                    .font(Win.body(13)).foregroundStyle(highlighted ? Color.white : Win.fileMetadata)
                     .lineLimit(1)
                     .padding(.trailing, 10)
                     .frame(width: width, alignment: .trailing)
@@ -556,13 +615,15 @@ struct DetailsRow: View {
         }
         .frame(height: height)
         .background(
-            WinRR(radius: 4).fill(
-                selected ? (hovering ? Win.selectedHover : Win.selected)
-                         : (hovering ? Win.fileRowHover : (alternating ? Win.alternatingRow : .clear)))
+            Rectangle().fill(
+                highlighted ? Win.currentRow : (alternating ? Win.alternatingRow : .clear))
         )
-        .overlay(WinRR(radius: 4).stroke(
-            selected && ex.tab.lead == item.id ? Win.accent.opacity(0.65) : .clear, lineWidth: 1))
-        .onHover { hovering = $0 }
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(highlighted ? Color.clear : Win.rowDivider)
+                .frame(height: 0.5)
+                .allowsHitTesting(false)
+        }
         .itemInteraction(ex, menus, item)
     }
 }
@@ -624,10 +685,12 @@ struct IconCell: View {
     let item: FileItem
     let size: CGFloat
     let cell: CGSize
-    @State private var hovering = false
+    @ObservedObject private var fileHover = FileHover.shared
+    private var hovering: Bool { fileHover.isHovered(item.id, in: ex) }
     @ObservedObject private var prefs = Prefs.shared
 
     private var selected: Bool { ex.tab.selection.contains(item.id) }
+    private var highlighted: Bool { selected }
     private var cutOut: Bool { Clipboard.cutPaths.contains(item.url.path) }
 
     var body: some View {
@@ -639,7 +702,7 @@ struct IconCell: View {
             } else {
                 Text(item.displayName)
                     .font(Win.body(14))
-                    .foregroundStyle(Win.text)
+                    .foregroundStyle(highlighted ? Color.white : Win.text)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                     .truncationMode(.tail)
@@ -651,9 +714,8 @@ struct IconCell: View {
         .padding(.top, 10)
         .frame(width: cell.width, height: cell.height)
         .background(
-            WinRR(radius: 4).fill(
-                selected ? (hovering ? Win.selectedHover : Win.selected)
-                         : (hovering ? Win.subtleHover : .clear))
+            WinRR(radius: 8).fill(
+                highlighted ? Win.currentRow : .clear)
         )
         .overlay(alignment: .topLeading) {
             if prefs.itemCheckBoxes && (hovering || selected) {
@@ -663,9 +725,6 @@ struct IconCell: View {
                 .padding(6)
             }
         }
-        .overlay(WinRR(radius: 4).stroke(
-            selected && ex.tab.lead == item.id ? Win.accent.opacity(0.65) : .clear, lineWidth: 1))
-        .onHover { hovering = $0 }
         .itemInteraction(ex, menus, item)
     }
 }
@@ -709,8 +768,8 @@ struct SmallRow: View {
     let item: FileItem
     let width: CGFloat
     let height: CGFloat
-    @State private var hovering = false
     private var selected: Bool { ex.tab.selection.contains(item.id) }
+    private var highlighted: Bool { selected }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -719,17 +778,14 @@ struct SmallRow: View {
                 RenameField(ex: ex, item: item).frame(height: 18)
             } else {
                 Text(item.displayName)
-                    .font(Win.body(14)).foregroundStyle(Win.text)
+                    .font(Win.body(14)).foregroundStyle(highlighted ? Color.white : Win.text)
                     .lineLimit(1).truncationMode(.tail)
             }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 6)
         .frame(width: width, height: height)
-        .background(WinRR(radius: 4).fill(selected ? Win.selected : (hovering ? Win.subtleHover : .clear)))
-        .overlay(WinRR(radius: 4).stroke(
-            selected && ex.tab.lead == item.id ? Win.accent.opacity(0.65) : .clear, lineWidth: 1))
-        .onHover { hovering = $0 }
+        .background(WinRR(radius: 8).fill(highlighted ? Win.currentRow : .clear))
         .itemInteraction(ex, menus, item)
     }
 }
@@ -771,8 +827,8 @@ struct TileCell: View {
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     let item: FileItem
-    @State private var hovering = false
     private var selected: Bool { ex.tab.selection.contains(item.id) }
+    private var highlighted: Bool { selected }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -781,21 +837,18 @@ struct TileCell: View {
                 if ex.tab.editing == item.id {
                     RenameField(ex: ex, item: item).frame(height: 20)
                 } else {
-                    Text(item.displayName).font(Win.body(14)).foregroundStyle(Win.text).lineLimit(1)
+                    Text(item.displayName).font(Win.body(14)).foregroundStyle(highlighted ? Color.white : Win.text).lineLimit(1)
                 }
-                Text(item.typeName).font(Win.body(13)).foregroundStyle(Win.textSecondary).lineLimit(1)
+                Text(item.typeName).font(Win.body(13)).foregroundStyle(highlighted ? Color.white : Win.textSecondary).lineLimit(1)
                 if !item.sizeText.isEmpty {
-                    Text(item.sizeText).font(Win.body(13)).foregroundStyle(Win.textTertiary)
+                    Text(item.sizeText).font(Win.body(13)).foregroundStyle(highlighted ? Color.white : Win.textTertiary)
                 }
             }
             Spacer(minLength: 0)
         }
         .padding(8)
         .frame(height: 72)
-        .background(WinRR(radius: 4).fill(selected ? Win.selected : (hovering ? Win.subtleHover : .clear)))
-        .overlay(WinRR(radius: 4).stroke(
-            selected && ex.tab.lead == item.id ? Win.accent.opacity(0.65) : .clear, lineWidth: 1))
-        .onHover { hovering = $0 }
+        .background(WinRR(radius: 8).fill(highlighted ? Win.currentRow : .clear))
         .itemInteraction(ex, menus, item)
     }
 }
@@ -805,8 +858,8 @@ struct ContentRow: View {
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     let item: FileItem
-    @State private var hovering = false
     private var selected: Bool { ex.tab.selection.contains(item.id) }
+    private var highlighted: Bool { selected }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -815,19 +868,16 @@ struct ContentRow: View {
                 if ex.tab.editing == item.id {
                     RenameField(ex: ex, item: item).frame(height: 20)
                 } else {
-                    Text(item.displayName).font(Win.body(14)).foregroundStyle(Win.text).lineLimit(1)
+                    Text(item.displayName).font(Win.body(14)).foregroundStyle(highlighted ? Color.white : Win.text).lineLimit(1)
                 }
-                Text(item.modifiedText).font(Win.body(13)).foregroundStyle(Win.textSecondary)
+                Text(item.modifiedText).font(Win.body(13)).foregroundStyle(highlighted ? Color.white : Win.textSecondary)
             }
             Spacer(minLength: 0)
-            Text(item.sizeText).font(Win.body(13)).foregroundStyle(Win.textSecondary)
+            Text(item.sizeText).font(Win.body(13)).foregroundStyle(highlighted ? Color.white : Win.textSecondary)
         }
         .padding(.horizontal, 10)
         .frame(height: 56)
-        .background(WinRR(radius: 4).fill(selected ? Win.selected : (hovering ? Win.subtleHover : .clear)))
-        .overlay(WinRR(radius: 4).stroke(
-            selected && ex.tab.lead == item.id ? Win.accent.opacity(0.65) : .clear, lineWidth: 1))
-        .onHover { hovering = $0 }
+        .background(WinRR(radius: 8).fill(highlighted ? Win.currentRow : .clear))
         .itemInteraction(ex, menus, item)
     }
 }

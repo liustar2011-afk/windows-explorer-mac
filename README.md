@@ -107,6 +107,38 @@ cp -R "build/File Explorer.app" /Applications/
 
 > macOS asks permission the first time the app reads Desktop, Documents, Downloads or a removable volume. Until you allow it, those folders list as empty. That is macOS, not the app.
 
+## Finder favorites sync
+
+Finder favorites sync is enabled by default. Quick access follows Finder's folder
+favorites in their saved order, then appends locally pinned folders without duplicates.
+Finder additions, removals, and reordering are detected automatically. Synced entries
+can also be added, removed and reordered here. Two-way sync is enabled by default;
+use the arrows in Settings → Quick access to adjust Finder favorites order.
+Disable Two-way Finder sync to return to following Finder only. Existing local
+pins are retained and are not automatically uploaded. Writes use individual
+macOS shared-list operations rather than replacing Finder's saved archive.
+
+Use **Settings → Quick access → Sync Finder favorites** to disable the feature,
+see its status, or sync immediately. Disabling it restores this app's local favorites.
+Unreadable data retains the last successful list and displays an error in Settings.
+The reader supports `.sfl4`, `.sfl3`, and `.sfl2` bookmark archives; non-folder and
+unresolvable special locations are skipped. Future changes to Finder's archive format
+may require updating the reader.
+
+## Automatic folder cleanup
+
+Entering a folder automatically scans its immediate files and moves `.DS_Store`,
+`Thumbs.db`, and `desktop.ini` to Trash. Subfolders, symbolic links, application
+bundles, Trash, and system directories are excluded. Cleanup runs in the background
+and can be undone with the normal Undo command; refreshing the same folder does
+not immediately clean restored files again.
+
+Turn this off in **Settings → Appearance → Folder cleanup**, or through
+**Tools → Automatically clean junk files**. An optional setting also includes
+`.tmp` and `.temp` files that have not been modified for at least 30 days; it is
+off by default. Ordinary documents, downloads in progress, backups, and AppleDouble
+files are preserved. Cleanup results and failures appear in the status bar.
+
 ## Keyboard shortcuts
 
 Every shortcut works with **`Ctrl`** (as on Windows) *and* **`Cmd`** (as Mac muscle memory expects). `Alt` means `Option`.

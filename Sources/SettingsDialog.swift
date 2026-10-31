@@ -159,6 +159,17 @@ struct SettingsDialog: View {
             }
             .padding(.horizontal, 2)
 
+            Text(L("Folder cleanup")).font(Win.body(12, weight: .semibold))
+                .foregroundStyle(Win.text).padding(.top, 14)
+            SettingsRow(title: L("Automatically clean junk files"),
+                        subtitle: L("On folder entry, move .DS_Store, Thumbs.db and desktop.ini to Trash. No subfolders.")) {
+                WinToggle(isOn: Binding(get: { prefs.autoCleanJunk }, set: { ex.setAutomaticJunkCleanup($0) }))
+            }
+            SettingsRow(title: L("Include old temporary files"),
+                        subtitle: L("Also clean .tmp and .temp files unchanged for at least 30 days.")) {
+                WinToggle(isOn: $prefs.cleanOldTemporaryFiles)
+            }
+
             Text(L("Layout")).font(Win.body(12, weight: .semibold))
                 .foregroundStyle(Win.text).padding(.top, 14)
             SettingsRow(title: L("Window button position")) {
@@ -256,6 +267,29 @@ struct SettingsDialog: View {
 
     private var quickAccess: some View {
         VStack(alignment: .leading, spacing: 8) {
+            SettingsRow(title: L("Sync Finder favorites"),
+                        subtitle: L("Follow Finder favorites and their order. Local pins are retained.")) {
+                WinToggle(isOn: $settings.syncFinderFavorites)
+            }
+            if settings.syncFinderFavorites {
+                SettingsRow(title: L("Two-way Finder sync"), subtitle: L("Add, remove and reorder favorites in either app.")) {
+                    WinToggle(isOn: $settings.bidirectionalFinderFavorites)
+                }
+                if let error = settings.finderWriteError {
+                    Text(error).font(Win.body(11)).foregroundStyle(.red)
+                }
+                HStack {
+                    Text(settings.finderSyncStatus ?? L("Reading Finder favorites…"))
+                        .font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                    Spacer()
+                    WinButton(padding: 8, height: 26) { FinderFavoritesSync.shared.requestReadAccess() } content: {
+                        Text(L("Allow read access…")).font(Win.body(11))
+                    }
+                    WinButton(padding: 8, height: 26) { FinderFavoritesSync.shared.refresh(force: true) } content: {
+                        Text(L("Sync now")).font(Win.body(11))
+                    }
+                }
+            }
             HStack {
                 Text(L("Pinned folders")).font(Win.body(12, weight: .semibold)).foregroundStyle(Win.text)
                 Spacer()
@@ -272,15 +306,29 @@ struct SettingsDialog: View {
                 SettingsRow(title: place.title,
                             subtitle: place.url?.path,
                             icon: place.icon) {
-                    WinButton(tooltip: L("Unpin"), padding: 6, height: 26) {
-                        if let u = place.url { settings.unpin(u) }
-                    } content: {
-                        Glyph(icon: .unpin, size: 14, color: Win.textSecondary, weight: 1.2)
+                    if let url = place.url, settings.isFinderFavorite(url), !settings.bidirectionalFinderFavorites {
+                        Text(L("Managed by Finder")).font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                    } else {
+                        if let url = place.url, settings.isFinderFavorite(url) {
+                            WinButton(tooltip: L("Move up"), padding: 6, height: 26) {
+                                FinderFavoritesSync.shared.move(url, offset: -1)
+                            } content: { Text("↑").font(Win.body(14)) }
+                            .disabled(settings.finderWritePending || settings.finderFavorites?.first?.url == url)
+                            WinButton(tooltip: L("Move down"), padding: 6, height: 26) {
+                                FinderFavoritesSync.shared.move(url, offset: 1)
+                            } content: { Text("↓").font(Win.body(14)) }
+                            .disabled(settings.finderWritePending || settings.finderFavorites?.last?.url == url)
+                        }
+                        WinButton(tooltip: L("Unpin"), padding: 6, height: 26) {
+                            if let u = place.url { settings.unpin(u) }
+                        } content: {
+                            Glyph(icon: .unpin, size: 14, color: Win.textSecondary, weight: 1.2)
+                        }
                     }
                 }
             }
 
-            let hidden = Array(settings.hiddenPlaces)
+            let hidden = Array(settings.hiddenPlaces).filter { !settings.isFinderFavorite(URL(fileURLWithPath: $0)) }
             if !hidden.isEmpty {
                 Text(L("Unpinned")).font(Win.body(12, weight: .semibold))
                     .foregroundStyle(Win.text).padding(.top, 12)
@@ -288,7 +336,7 @@ struct SettingsDialog: View {
                     SettingsRow(title: Places.displayName(for: URL(fileURLWithPath: path)),
                                 subtitle: path, icon: .folderOutline) {
                         WinButton(tooltip: L("Pin again"), padding: 6, height: 26) {
-                            settings.hiddenPlaces.remove(path)
+                            settings.pin(URL(fileURLWithPath: path))
                         } content: {
                             Glyph(icon: .pin, size: 14, color: Win.textSecondary, weight: 1.2)
                         }

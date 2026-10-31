@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 // MARK: - Locations
 
@@ -287,7 +288,10 @@ enum Ops {
 
     static func newFile(in dir: URL, name: String, contents: Data = Data()) throws -> URL {
         let url = uniqueURL(for: name, in: dir, copySuffix: false)
-        guard fm.createFile(atPath: url.path, contents: contents) else {
+        // A zero-byte .rtf can't be opened by the Cocoa text system (TextEdit included).
+        let data = contents.isEmpty && url.pathExtension.lowercased() == "rtf"
+            ? Data("{\\rtf1}".utf8) : contents
+        guard fm.createFile(atPath: url.path, contents: data) else {
             throw CocoaError(.fileWriteUnknown)
         }
         return url
@@ -379,6 +383,9 @@ final class Explorer: ObservableObject {
     private var searchWork: DispatchWorkItem?
     private var searchGeneration = UUID()
     private var watcher: DirectoryWatcher?
+    private var cleanupVisit: String?
+    private var cleanupJob: JunkCleaner.Job?
+    private var cleanupPreferences: AnyCancellable?
 
     var tab: TabState {
         get { tabs[min(active, tabs.count - 1)] }
@@ -388,11 +395,18 @@ final class Explorer: ObservableObject {
     init() {
         reload()
         loadRecents()
+        cleanupPreferences = prefs.$autoCleanJunk.combineLatest(prefs.$cleanOldTemporaryFiles)
+            .dropFirst().sink { [weak self] _ in
+                DispatchQueue.main.async { self?.scheduleJunkCleanup() }
+            }
     }
+
+    deinit { cleanupJob?.cancel() }
 
     // MARK: Loading
 
     func reload() {
+        scheduleJunkCleanup()
         if !tab.search.isEmpty {
             watchCurrentFolder()
             updateSearch(tab.search)
@@ -423,6 +437,46 @@ final class Explorer: ObservableObject {
         tab.items = Loader.sort(items, by: prefs.sortKey, ascending: prefs.sortAscending)
         tab.selection = tab.selection.filter { p in tab.items.contains { $0.id == p } }
         watchCurrentFolder()
+    }
+
+    private func scheduleJunkCleanup() {
+        guard ProcessInfo.processInfo.environment["WINEXP_SELFTEST"] == nil,
+              ProcessInfo.processInfo.environment["WINEXP_DEMO"] == nil,
+              ProcessInfo.processInfo.environment["WINEXP_SNAPSHOT"] == nil,
+              prefs.autoCleanJunk, case .folder(let directory) = tab.location else {
+            cleanupJob?.cancel()
+            cleanupVisit = nil
+            return
+        }
+        let visit = "\(tab.id)|\(directory.standardizedFileURL.path)|\(prefs.cleanOldTemporaryFiles)"
+        guard cleanupVisit != visit else { return }
+        cleanupJob?.cancel()
+        cleanupVisit = visit
+        let job = JunkCleaner.Job()
+        cleanupJob = job
+        let includeTemporary = prefs.cleanOldTemporaryFiles
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            let result = JunkCleaner.clean(directory, includeOldTemporaryFiles: includeTemporary, job: job)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if !result.trashed.isEmpty { self.push(.trash(items: result.trashed)) }
+                if self.cleanupVisit == visit {
+                    if !result.trashed.isEmpty {
+                        self.reload()
+                        self.flash(LF("Moved {0} junk files to Trash. Undo is available.", result.trashed.count))
+                    }
+                    if !result.failures.isEmpty {
+                        self.flash(LF("Junk cleanup: {0} moved to Trash, {1} failed.",
+                                      result.trashed.count, result.failures.count))
+                    }
+                }
+            }
+        }
+    }
+
+    func setAutomaticJunkCleanup(_ enabled: Bool) {
+        prefs.autoCleanJunk = enabled
+        reload()
     }
 
     private func matchesFilter(_ item: FileItem, _ filter: String) -> Bool {

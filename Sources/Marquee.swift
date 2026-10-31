@@ -1,14 +1,6 @@
 import SwiftUI
 import AppKit
 
-/// Frames of the visible items, in the window's root coordinate space.
-struct ItemFrameKey: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, b in b })
-    }
-}
-
 /// Rubber-band selection.
 ///
 /// Handled at the AppKit level rather than with a SwiftUI drag gesture: the
@@ -62,7 +54,9 @@ final class MarqueeController: ObservableObject {
         guard let (id, zone) = zones.first(where: { $0.value.frame.contains(point) }),
               let explorer = zone.explorer else { return false }
         // A press on an item belongs to the item, not to a selection band.
-        guard !zone.items.values.contains(where: { $0.contains(point) }) else { return false }
+        let items = zone.items.isEmpty
+            ? (RightClickRouter.shared.itemFrames(for: explorer) ?? [:]) : zone.items
+        guard !items.values.contains(where: { $0.contains(point) }) else { return false }
 
         owner = id
         origin = point
@@ -79,7 +73,9 @@ final class MarqueeController: ObservableObject {
         if band.width > 3 || band.height > 3 { moved = true }
         rect = band.intersection(zone.frame)
 
-        let hits = zone.items.filter { $0.value.intersects(band) }.map(\.key)
+        let items = zone.items.isEmpty
+            ? (RightClickRouter.shared.itemFrames(for: explorer) ?? [:]) : zone.items
+        let hits = items.filter { $0.value.intersects(band) }.map(\.key)
         explorer.applyMarquee(Set(hits), base: baseSelection)
     }
 
@@ -137,13 +133,7 @@ extension View {
         })
     }
 
-    /// Reports this item's position so the band knows what it is crossing.
-    func marqueeItem(_ id: String) -> some View {
-        background(GeometryReader { geo in
-            Color.clear.preference(key: ItemFrameKey.self,
-                                   value: [id: geo.frame(in: .named("root"))])
-        })
-    }
+
 }
 
 /// The band itself, drawn over the window in root coordinates.

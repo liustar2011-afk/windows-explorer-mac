@@ -17,7 +17,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 compile() {  # <target-triple> <output>
-    swiftc -O -whole-module-optimization -target "$1" Sources/*.swift -o "$2"
+    clang -fobjc-arc -target "$1" -c Sources/FinderFavoritesBridge.m -o "build/FinderFavoritesBridge-$1.o"
+    swiftc -O -whole-module-optimization -target "$1" -import-objc-header Sources/FinderFavoritesBridge.h Sources/*.swift "build/FinderFavoritesBridge-$1.o" -o "$2"
 }
 
 if [ "$UNIVERSAL" = "1" ]; then
