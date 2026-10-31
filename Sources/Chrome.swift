@@ -12,22 +12,26 @@ struct TitleBar: View {
     var body: some View {
         GeometryReader { geometry in
             // Bound the strip to the window so tab count cannot widen the page.
-            let tabWidth = max(0, min(CGFloat(ex.tabs.count) * 214 - 6,
-                                      geometry.size.width - 138 - 8 - 40 - 40))
+            let tabWidth = max(0, min(CGFloat(ex.tabs.count) * TabChip.width + 2 * TabChip.flare,
+                                      geometry.size.width - 138 - 40 - 40))
             HStack(spacing: 0) {
                 if interfaceSettings.windowButtonsOnLeft { captionButtons }
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(alignment: .bottom, spacing: 4) {
+                        HStack(alignment: .bottom, spacing: 0) {
                             ForEach(Array(ex.tabs.enumerated()), id: \.element.id) { idx, t in
                                 TabChip(title: t.location.displayTitle, icon: t.location.icon,
                                         active: idx == ex.active,
+                                        separatorBefore: idx > 0 && idx != ex.active && idx - 1 != ex.active,
                                         showClose: ex.tabs.count > 1 || idx == ex.active,
                                         onSelect: { ex.selectTab(idx) },
                                         onClose: { ex.closeTab(idx) })
+                                    .zIndex(idx == ex.active ? 1 : 0)
                                     .id(t.id)
                             }
                         }
+                        // Room for the active tab's flares, which reach past its edges.
+                        .padding(.horizontal, TabChip.flare)
                     }
                     .frame(width: tabWidth, height: Win.M.tabStripHeight, alignment: .bottom)
                     .onAppear { proxy.scrollTo(ex.tab.id) }
@@ -38,9 +42,8 @@ struct TitleBar: View {
                         proxy.scrollTo(ex.tab.id)
                     }
                 }
-                .padding(.leading, 8)
 
-                WinButton(tooltip: L("New tab (Ctrl+T)"), padding: 8, height: 28, corner: 7) {
+                WinButton(tooltip: L("New tab (Ctrl+T)"), padding: 8, height: 28, corner: 14) {
                     ex.openTab()
                 } content: {
                     Glyph(icon: .plus, size: 12, color: Win.text, weight: 1.4)
@@ -58,8 +61,6 @@ struct TitleBar: View {
         .background {
             BackdropMaterial(material: .titlebar)
                 .overlay(Win.tabStrip.opacity(0.94))
-                // Behind the tabs, so the active tab breaks the line and joins the toolbar.
-                .overlay(alignment: .bottom) { Rectangle().fill(Win.tabStripEdge).frame(height: 1) }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResizeNotification)) { _ in
             zoomed = NSApp.keyWindow?.isZoomed ?? false
@@ -95,63 +96,78 @@ struct BackdropMaterial: NSViewRepresentable {
     }
 }
 
+/// Chrome's tab outline: rounded top corners, and concave flares at the bottom
+/// that reach past the tab's edges so it flows into the toolbar below.
+struct ChromeTabShape: Shape {
+    var radius: CGFloat = 8
+    var flare: CGFloat = TabChip.flare
+
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX - flare, y: r.maxY))
+        p.addQuadCurve(to: CGPoint(x: r.minX, y: r.maxY - flare), control: CGPoint(x: r.minX, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.minX, y: r.minY + radius))
+        p.addQuadCurve(to: CGPoint(x: r.minX + radius, y: r.minY), control: CGPoint(x: r.minX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX - radius, y: r.minY))
+        p.addQuadCurve(to: CGPoint(x: r.maxX, y: r.minY + radius), control: CGPoint(x: r.maxX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY - flare))
+        p.addQuadCurve(to: CGPoint(x: r.maxX + flare, y: r.maxY), control: CGPoint(x: r.maxX, y: r.maxY))
+        p.closeSubpath()
+        return p
+    }
+}
+
 struct TabChip: View {
+    static let width: CGFloat = 220
+    static let flare: CGFloat = 8
+
     @ObservedObject private var interfaceSettings = Settings.shared
     let title: String
     let icon: Icon
     let active: Bool
+    /// Chrome draws a short divider between two inactive tabs.
+    var separatorBefore = false
     let showClose: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
     @State private var hovering = false
 
-    private var shape: UnevenRoundedRectangle {
-        active
-            ? UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 0,
-                                     bottomTrailingRadius: 0, topTrailingRadius: 8, style: .continuous)
-            : UnevenRoundedRectangle(cornerRadii: .init(topLeading: 8, bottomLeading: 8,
-                                                        bottomTrailing: 8, topTrailing: 8), style: .continuous)
-    }
-
     var body: some View {
         HStack(spacing: 8) {
             Glyph(icon: icon, size: 15, color: active ? Win.text : Win.textSecondary, weight: 1.2)
             Text(title)
-                .font(Win.body(13, weight: active ? .medium : .regular))
+                .font(Win.body(13))
                 .truncationMode(.middle)
                 .foregroundStyle(active ? Win.text : Win.textSecondary)
                 .lineLimit(1)
             Spacer(minLength: 4)
-            if showClose && (hovering || active) {
+            if showClose {
                 Button(action: onClose) {
-                    Glyph(icon: .tabClose, size: 11, color: Win.textSecondary, weight: 1.3)
-                        .frame(width: 24, height: 24)
-                        .background(WinRR(radius: 4).fill(Win.subtleHover.opacity(0.001)))
+                    Glyph(icon: .tabClose, size: 10, color: Win.textSecondary, weight: 1.3)
+                        .frame(width: 20, height: 20)
+                        .background(Circle().fill(Win.subtleHover.opacity(0.001)))
                 }
                 .buttonStyle(.plain)
-                .hoverFill()
+                .hoverFill(corner: 10)
                 .help(L("Close tab (Ctrl+W)"))
-            } else {
-                Color.clear.frame(width: 24, height: 24)
             }
         }
-        .padding(.leading, 10)
-        .padding(.trailing, 4)
-        // The active tab is taller and square-bottomed so it merges into the toolbar below.
-        .frame(width: 208, height: active ? 34 : 30, alignment: .leading)
-        .background(
-            shape.fill(active ? Win.tabActive : (hovering ? Win.tabHover : Color.clear))
-                .shadow(color: active ? Win.surfaceShadow : .clear, radius: 3, x: 0, y: -1)
-        )
-        .overlay {
+        .padding(.leading, 12)
+        .padding(.trailing, 8)
+        .frame(width: Self.width, height: 34, alignment: .leading)
+        .background {
             if active {
-                shape.stroke(Win.tabBorder, lineWidth: 0.5)
-                    .mask(Rectangle().padding(.bottom, 1))
-                    .allowsHitTesting(false)
+                ChromeTabShape().fill(Win.tabActive)
+            } else if hovering {
+                WinRR(radius: 8).fill(Win.tabHover).padding(.horizontal, 2).padding(.bottom, 4)
             }
         }
-        .padding(.bottom, active ? 0 : 3)
-        .contentShape(shape)
+        .overlay(alignment: .leading) {
+            if separatorBefore && !hovering {
+                Rectangle().fill(Win.tabSeparator).frame(width: 1, height: 18).offset(y: -2)
+            }
+        }
+        .contentShape(Rectangle())
         .testAnchor("tab:\(title)")
         .help(title)
         .onHover { hovering = $0 }

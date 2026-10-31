@@ -32,17 +32,14 @@ enum Win {
     // comes from tone and soft shadow rather than lines; colour is reserved
     // for the accent. Three tiers: tab strip, workspace, then toolbar and card.
 
-    /// Tab strip behind the caption buttons.
-    static let tabStrip     = dyn(c(0x111113), c(0xE6E5E1))
-    /// Hairline under the tab strip; the active tab covers it.
-    static let tabStripEdge = dyn(c(0x000000, 0.55), c(0x000000, 0.07))
-    /// Opaque tab surfaces keep labels legible over the title-bar material.
-    static let tabActive    = dyn(c(0x232326), c(0xFCFCFB))
-    static let tabHover     = dyn(c(0xFFFFFF, 0.05), c(0x000000, 0.035))
-    static let tabBorder    = dyn(c(0xFFFFFF, 0.07), c(0x000000, 0.06))
-    /// Address-bar row + command bar: one band, continuous with the active tab.
-    static let chrome       = dyn(c(0x232326), c(0xFCFCFB))
-    static let commandBar   = dyn(c(0x232326), c(0xFCFCFB))
+    /// Tab strip behind the caption buttons, tinted like a Chrome frame.
+    static let tabStrip     = dyn(c(0x1B1A1A), c(0xEFE3DB))
+    /// Active tab, address row and command bar share one colour, as in Chrome.
+    static let tabActive    = dyn(c(0x2E2C2B), c(0xFDFAF8))
+    static let tabHover     = dyn(c(0xFFFFFF, 0.06), c(0xFFFFFF, 0.50))
+    static let tabSeparator = dyn(c(0xFFFFFF, 0.14), c(0x5A4034, 0.22))
+    static let chrome       = dyn(c(0x2E2C2B), c(0xFDFAF8))
+    static let commandBar   = dyn(c(0x2E2C2B), c(0xFDFAF8))
     static let listHeader   = dyn(c(0x1D1D20), c(0xFFFFFF))
     static let sidebar      = dyn(c(0x19191B), c(0xF3F2EF))
     static let workspace    = dyn(c(0x19191B), c(0xF3F2EF))

@@ -196,6 +196,11 @@ enum UITest {
     /// States worth eyeballing after a design change, in both themes.
     private static func screenshotCases(into dir: URL) {
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        // Several tabs show the active tab's outline and the dividers between others.
+        step {
+            for loc in [Location.folder(URL(fileURLWithPath: path("Folder A"))), .thisPC, .gallery] { ex.openTab(loc) }
+            ex.selectTab(0)
+        }
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             // Set directly rather than through Settings, so the user's theme is not overwritten.
             step { NSApp.appearance = NSAppearance(named: appearance) }
