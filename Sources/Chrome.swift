@@ -18,7 +18,7 @@ struct TitleBar: View {
                 if interfaceSettings.windowButtonsOnLeft { captionButtons }
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
+                        HStack(alignment: .bottom, spacing: 4) {
                             ForEach(Array(ex.tabs.enumerated()), id: \.element.id) { idx, t in
                                 TabChip(title: t.location.displayTitle, icon: t.location.icon,
                                         active: idx == ex.active,
@@ -29,7 +29,7 @@ struct TitleBar: View {
                             }
                         }
                     }
-                    .frame(width: tabWidth, height: Win.M.tabStripHeight)
+                    .frame(width: tabWidth, height: Win.M.tabStripHeight, alignment: .bottom)
                     .onAppear { proxy.scrollTo(ex.tab.id) }
                     .onChange(of: ex.tab.id) { _, id in
                         proxy.scrollTo(id)
@@ -57,7 +57,9 @@ struct TitleBar: View {
         .frame(height: Win.M.tabStripHeight)
         .background {
             BackdropMaterial(material: .titlebar)
-                .overlay(Win.tabStrip.opacity(0.80))
+                .overlay(Win.tabStrip.opacity(0.94))
+                // Behind the tabs, so the active tab breaks the line and joins the toolbar.
+                .overlay(alignment: .bottom) { Rectangle().fill(Win.tabStripEdge).frame(height: 1) }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResizeNotification)) { _ in
             zoomed = NSApp.keyWindow?.isZoomed ?? false
@@ -103,6 +105,14 @@ struct TabChip: View {
     let onClose: () -> Void
     @State private var hovering = false
 
+    private var shape: UnevenRoundedRectangle {
+        active
+            ? UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 0,
+                                     bottomTrailingRadius: 0, topTrailingRadius: 8, style: .continuous)
+            : UnevenRoundedRectangle(cornerRadii: .init(topLeading: 8, bottomLeading: 8,
+                                                        bottomTrailing: 8, topTrailing: 8), style: .continuous)
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             Glyph(icon: icon, size: 15, color: active ? Win.text : Win.textSecondary, weight: 1.2)
@@ -127,17 +137,21 @@ struct TabChip: View {
         }
         .padding(.leading, 10)
         .padding(.trailing, 4)
-        .frame(width: 208, height: 30, alignment: .leading)
+        // The active tab is taller and square-bottomed so it merges into the toolbar below.
+        .frame(width: 208, height: active ? 34 : 30, alignment: .leading)
         .background(
-            WinRR(radius: 8)
-                .fill(active ? Win.tabActive : (hovering ? Win.tabHover : Color.clear))
+            shape.fill(active ? Win.tabActive : (hovering ? Win.tabHover : Color.clear))
+                .shadow(color: active ? Win.surfaceShadow : .clear, radius: 3, x: 0, y: -1)
         )
         .overlay {
-            WinRR(radius: 8)
-                .strokeBorder(active ? Win.tabBorder : Color.clear, lineWidth: 0.5)
-                .allowsHitTesting(false)
+            if active {
+                shape.stroke(Win.tabBorder, lineWidth: 0.5)
+                    .mask(Rectangle().padding(.bottom, 1))
+                    .allowsHitTesting(false)
+            }
         }
-        .contentShape(WinRR(radius: 8))
+        .padding(.bottom, active ? 0 : 3)
+        .contentShape(shape)
         .help(title)
         .onHover { hovering = $0 }
         .onTapGesture(count: 2, perform: onClose)
@@ -233,8 +247,8 @@ struct AddressBar: View {
                 }
                 .padding(.horizontal, 10)
                 .frame(height: 32)
-                .background(WinRR(radius: 4).fill(Win.fieldFocus))
-                .overlay(WinRR(radius: 4).stroke(Win.strokeStrong, lineWidth: 1))
+                .background(WinRR(radius: 8).fill(Win.fieldFocus))
+                .overlay(WinRR(radius: 8).stroke(Win.accent.opacity(0.7), lineWidth: 1))
                 .overlay(alignment: .bottom) {
                     Rectangle().fill(Win.accent).frame(height: 2)
                         .padding(.horizontal, 1)
@@ -255,8 +269,7 @@ struct AddressBar: View {
                     Spacer(minLength: 0)
                 }
                 .frame(height: 32)
-                .background(WinRR(radius: 4).fill(hovering ? Win.fieldHover : Win.field))
-                .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
+                .background(WinRR(radius: 8).fill(hovering ? Win.fieldHover : Win.field))
                 .onHover { hovering = $0 }
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -365,8 +378,8 @@ struct SearchBox: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 32)
-        .background(WinRR(radius: 4).fill(focused ? Win.fieldFocus : (hovering ? Win.fieldHover : Win.field)))
-        .overlay(WinRR(radius: 4).stroke(focused ? Win.strokeStrong : Win.stroke, lineWidth: 1))
+        .background(WinRR(radius: 8).fill(focused ? Win.fieldFocus : (hovering ? Win.fieldHover : Win.field)))
+        .overlay(WinRR(radius: 8).stroke(focused ? Win.accent.opacity(0.7) : .clear, lineWidth: 1))
         .onHover { hovering = $0 }
         .onReceive(NotificationCenter.default.publisher(for: .focusSearch)) { _ in focused = true }
     }
@@ -514,8 +527,10 @@ struct CommandBar: View {
         }
         .padding(.horizontal, 8)
         .frame(height: Win.M.commandBarHeight)
-        .background(Win.commandBar)
-        .overlay(alignment: .bottom) { Rectangle().fill(Win.divider).frame(height: 1) }
+        .background(
+            Rectangle().fill(Win.commandBar)
+                .shadow(color: Win.surfaceShadow, radius: 6, x: 0, y: 2)
+        )
         .onPreferenceChange(FrameKey.self) { frames.merge($0, uniquingKeysWith: { _, b in b }) }
     }
 

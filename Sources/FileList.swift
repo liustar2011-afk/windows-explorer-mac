@@ -498,7 +498,7 @@ struct ColumnHeader: View {
             Rectangle()
                 .fill(Color.clear)
                 .frame(width: 6, height: 20)
-                .overlay(Rectangle().fill(Win.divider).frame(width: 1))
+                .overlay(Rectangle().fill(Win.divider).frame(width: 1, height: 12))
                 .contentShape(Rectangle())
                 .onHover { NSCursor.resizeLeftRight.set(); if !$0 { NSCursor.arrow.set() } }
                 .gesture(DragGesture(coordinateSpace: .named("detailColumnHeader"))
@@ -578,7 +578,7 @@ struct DetailsRow: View {
                 } else {
                     Text(item.displayName)
                         .font(Win.body(14))
-                        .foregroundStyle(highlighted ? Color.white : (item.isHidden ? Win.textTertiary : Win.text))
+                        .foregroundStyle(highlighted ? Win.selectionText : (item.isHidden ? Win.textTertiary : Win.text))
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .opacity(cutOut ? 0.45 : 1)
@@ -589,7 +589,7 @@ struct DetailsRow: View {
 
             if let width = columns.date {
                 Text(item.modifiedText)
-                    .font(Win.body(13)).foregroundStyle(highlighted ? Color.white : Win.fileMetadata)
+                    .font(Win.body(13)).foregroundStyle(highlighted ? Win.selectionText : Win.fileMetadata)
                     .lineLimit(1)
                     .padding(.leading, 6)
                     .frame(width: width, alignment: .leading)
@@ -597,7 +597,7 @@ struct DetailsRow: View {
 
             if let width = columns.type {
                 Text(item.typeName)
-                    .font(Win.body(13)).foregroundStyle(highlighted ? Color.white : Win.fileMetadata)
+                    .font(Win.body(13)).foregroundStyle(highlighted ? Win.selectionText : Win.fileMetadata)
                     .lineLimit(1)
                     .padding(.leading, 6)
                     .frame(width: width, alignment: .leading)
@@ -605,7 +605,7 @@ struct DetailsRow: View {
 
             if let width = columns.size {
                 Text(item.sizeText)
-                    .font(Win.body(13)).foregroundStyle(highlighted ? Color.white : Win.fileMetadata)
+                    .font(Win.body(13)).foregroundStyle(highlighted ? Win.selectionText : Win.fileMetadata)
                     .lineLimit(1)
                     .padding(.trailing, 10)
                     .frame(width: width, alignment: .trailing)
@@ -618,12 +618,6 @@ struct DetailsRow: View {
             Rectangle().fill(
                 highlighted ? Win.currentRow : (alternating ? Win.alternatingRow : .clear))
         )
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(highlighted ? Color.clear : Win.rowDivider)
-                .frame(height: 0.5)
-                .allowsHitTesting(false)
-        }
         .itemInteraction(ex, menus, item)
     }
 }
@@ -711,7 +705,7 @@ struct IconCell: View {
             } else {
                 Text(item.displayName)
                     .font(Win.body(14))
-                    .foregroundStyle(highlighted ? Color.white : Win.text)
+                    .foregroundStyle(highlighted ? Win.selectionText : Win.text)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                     .truncationMode(.tail)
@@ -787,7 +781,7 @@ struct SmallRow: View {
                 RenameField(ex: ex, item: item).frame(height: 18)
             } else {
                 Text(item.displayName)
-                    .font(Win.body(14)).foregroundStyle(highlighted ? Color.white : Win.text)
+                    .font(Win.body(14)).foregroundStyle(highlighted ? Win.selectionText : Win.text)
                     .lineLimit(1).truncationMode(.tail)
             }
             Spacer(minLength: 0)
@@ -846,11 +840,11 @@ struct TileCell: View {
                 if ex.tab.editing == item.id {
                     RenameField(ex: ex, item: item).frame(height: 20)
                 } else {
-                    Text(item.displayName).font(Win.body(14)).foregroundStyle(highlighted ? Color.white : Win.text).lineLimit(1)
+                    Text(item.displayName).font(Win.body(14)).foregroundStyle(highlighted ? Win.selectionText : Win.text).lineLimit(1)
                 }
-                Text(item.typeName).font(Win.body(13)).foregroundStyle(highlighted ? Color.white : Win.textSecondary).lineLimit(1)
+                Text(item.typeName).font(Win.body(13)).foregroundStyle(highlighted ? Win.selectionText : Win.textSecondary).lineLimit(1)
                 if !item.sizeText.isEmpty {
-                    Text(item.sizeText).font(Win.body(13)).foregroundStyle(highlighted ? Color.white : Win.textTertiary)
+                    Text(item.sizeText).font(Win.body(13)).foregroundStyle(highlighted ? Win.selectionText : Win.textTertiary)
                 }
             }
             Spacer(minLength: 0)
@@ -877,12 +871,12 @@ struct ContentRow: View {
                 if ex.tab.editing == item.id {
                     RenameField(ex: ex, item: item).frame(height: 20)
                 } else {
-                    Text(item.displayName).font(Win.body(14)).foregroundStyle(highlighted ? Color.white : Win.text).lineLimit(1)
+                    Text(item.displayName).font(Win.body(14)).foregroundStyle(highlighted ? Win.selectionText : Win.text).lineLimit(1)
                 }
-                Text(item.modifiedText).font(Win.body(13)).foregroundStyle(highlighted ? Color.white : Win.textSecondary)
+                Text(item.modifiedText).font(Win.body(13)).foregroundStyle(highlighted ? Win.selectionText : Win.textSecondary)
             }
             Spacer(minLength: 0)
-            Text(item.sizeText).font(Win.body(13)).foregroundStyle(highlighted ? Color.white : Win.textSecondary)
+            Text(item.sizeText).font(Win.body(13)).foregroundStyle(highlighted ? Win.selectionText : Win.textSecondary)
         }
         .padding(.horizontal, 10)
         .frame(height: 56)

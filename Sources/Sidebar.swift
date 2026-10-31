@@ -161,7 +161,7 @@ struct NavRow: View {
         .padding(.leading, 4)
         .background(
             WinRR(radius: 7)
-                .fill(selected ? Win.selected : (hovering ? Win.subtleHover : .clear))
+                .fill(selected ? Win.navSelected : (hovering ? Win.subtleHover : .clear))
         )
         .overlay(alignment: .leading) {
             if selected {

@@ -27,6 +27,7 @@ struct ContentView: View {
                     TitleBar(ex: ex, menus: menus)
                     NavBar(ex: ex, menus: menus)
                     CommandBar(ex: ex, model: model, menus: menus)
+                        .zIndex(1) // Lets its shadow fall on the workspace below.
 
                     HStack(spacing: 0) {
                         if prefs.showNavPane {
@@ -36,6 +37,7 @@ struct ContentView: View {
                         }
                         panes()
                             .clipShape(WinRR(radius: 10))
+                            .overlay(WinRR(radius: 10).strokeBorder(Win.cardStroke, lineWidth: 1))
                             .shadow(color: Win.surfaceShadow, radius: 3, x: 0, y: 1)
                             .padding(8)
                             .background(Win.workspace)

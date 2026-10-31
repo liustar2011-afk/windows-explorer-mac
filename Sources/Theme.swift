@@ -28,57 +28,65 @@ enum Win {
 
     // MARK: - Surfaces
 
-    /// Mica-like tab strip behind the caption buttons.
-    static let tabStrip     = dyn(c(0x1C242D), c(0xDEE6EF))
+    // Quiet neutrals: warm paper in light mode, graphite in dark. Hierarchy
+    // comes from tone and soft shadow rather than lines; colour is reserved
+    // for the accent. Three tiers: tab strip, workspace, then toolbar and card.
+
+    /// Tab strip behind the caption buttons.
+    static let tabStrip     = dyn(c(0x111113), c(0xE6E5E1))
+    /// Hairline under the tab strip; the active tab covers it.
+    static let tabStripEdge = dyn(c(0x000000, 0.55), c(0x000000, 0.07))
     /// Opaque tab surfaces keep labels legible over the title-bar material.
-    static let tabActive    = dyn(c(0x38424C), c(0xFCFCFA))
-    static let tabHover     = dyn(c(0xFFFFFF, 0.06), c(0xFFFFFF, 0.38))
-    static let tabBorder    = dyn(c(0xFFFFFF, 0.10), c(0x000000, 0.10))
-    /// Address-bar row + command bar.
-    static let chrome       = dyn(c(0x262D35), c(0xF0F3F6))
-    static let commandBar   = dyn(c(0x252C33), c(0xF6F7F7))
-    static let listHeader   = dyn(c(0x2B3540), c(0xEBF0F3))
-    static let sidebar      = dyn(c(0x202A35), c(0xE1E9F1))
-    static let workspace    = dyn(c(0x171E26), c(0xE7ECF0))
-    static let surfaceShadow = dyn(c(0x000000, 0.22), c(0x22384E, 0.08))
-    static let content      = dyn(c(0x1E2329), c(0xFAFAF7))
-    static let statusBar    = dyn(c(0x242C34), c(0xEFF2F4))
-    static let flyout       = dyn(c(0x2C2C2C), c(0xF9F9F9))
-    static let dialog       = dyn(c(0x272727), c(0xF9F9F9))
+    static let tabActive    = dyn(c(0x232326), c(0xFCFCFB))
+    static let tabHover     = dyn(c(0xFFFFFF, 0.05), c(0x000000, 0.035))
+    static let tabBorder    = dyn(c(0xFFFFFF, 0.07), c(0x000000, 0.06))
+    /// Address-bar row + command bar: one band, continuous with the active tab.
+    static let chrome       = dyn(c(0x232326), c(0xFCFCFB))
+    static let commandBar   = dyn(c(0x232326), c(0xFCFCFB))
+    static let listHeader   = dyn(c(0x1D1D20), c(0xFFFFFF))
+    static let sidebar      = dyn(c(0x19191B), c(0xF3F2EF))
+    static let workspace    = dyn(c(0x19191B), c(0xF3F2EF))
+    static let surfaceShadow = dyn(c(0x000000, 0.40), c(0x3A3428, 0.07))
+    static let content      = dyn(c(0x1D1D20), c(0xFFFFFF))
+    static let statusBar    = dyn(c(0x19191B), c(0xF3F2EF))
+    static let flyout       = dyn(c(0x2A2A2D), c(0xFDFDFC))
+    static let dialog       = dyn(c(0x262629), c(0xFDFDFC))
 
     // MARK: - Controls
 
-    /// Address bar / search box field fill.
-    static let field        = dyn(c(0x30333A), c(0xFFFFFF))
-    static let fieldHover   = dyn(c(0x323232), c(0xFAFAFA))
-    static let fieldFocus   = dyn(c(0x1F1F1F), c(0xFFFFFF))
-    static let controlFill  = dyn(c(0xFFFFFF, 0.061), c(0xFFFFFF, 0.70))
+    /// Address bar / search box: borderless wells; a stroke appears only on focus.
+    static let field        = dyn(c(0xFFFFFF, 0.06), c(0x000000, 0.04))
+    static let fieldHover   = dyn(c(0xFFFFFF, 0.09), c(0x000000, 0.06))
+    static let fieldFocus   = dyn(c(0x18181A), c(0xFFFFFF))
+    static let controlFill  = dyn(c(0xFFFFFF, 0.06), c(0xFFFFFF, 0.70))
 
     /// Subtle button states (toolbar buttons, list rows).
-    static let subtleHover  = dyn(c(0xFFFFFF, 0.061), c(0x000000, 0.037))
-    static let subtlePress  = dyn(c(0xFFFFFF, 0.042), c(0x000000, 0.024))
-    static let alternatingRow = dyn(c(0xBDD2E8, 0.065), c(0x536D86, 0.065))
-    static let rowDivider = dyn(c(0xBDD2E8, 0.09), c(0x536D86, 0.10))
-    /// Distinct from alternating stripes while staying quieter than selection.
-    static let currentRow = c(0x0061E8)
-    static let fileRowHover = dyn(c(0xB9D3EC, 0.10), c(0x547C9D, 0.075))
+    static let subtleHover  = dyn(c(0xFFFFFF, 0.055), c(0x000000, 0.04))
+    static let subtlePress  = dyn(c(0xFFFFFF, 0.04), c(0x000000, 0.03))
+    static let alternatingRow = dyn(c(0xFFFFFF, 0.018), c(0x000000, 0.018))
+    /// Selection is a soft accent wash; text keeps its own colour.
+    static var currentRow: Color { accent.opacity(isDark ? 0.26 : 0.14) }
+    static let selectionText = dyn(c(0xF4F4F5), c(0x17191C))
+    static let fileRowHover = dyn(c(0xFFFFFF, 0.045), c(0x000000, 0.03))
     static var selected: Color { accent.opacity(isDark ? 0.18 : 0.10) }
     static var selectedHover: Color { accent.opacity(isDark ? 0.24 : 0.16) }
+    /// Sidebar selection stays neutral; the accent marker carries the colour.
+    static let navSelected  = dyn(c(0xFFFFFF, 0.08), c(0x000000, 0.055))
 
     // MARK: - Strokes
 
-    static let stroke       = dyn(c(0xFFFFFF, 0.093), c(0x000000, 0.073))
-    static let strokeStrong = dyn(c(0xFFFFFF, 0.16), c(0x000000, 0.16))
-    static let divider      = dyn(c(0xFFFFFF, 0.083), c(0x000000, 0.060))
-    static let cardStroke   = dyn(c(0x000000, 0.20), c(0x000000, 0.058))
+    static let stroke       = dyn(c(0xFFFFFF, 0.08), c(0x000000, 0.07))
+    static let strokeStrong = dyn(c(0xFFFFFF, 0.14), c(0x000000, 0.14))
+    static let divider      = dyn(c(0xFFFFFF, 0.07), c(0x000000, 0.06))
+    static let cardStroke   = dyn(c(0xFFFFFF, 0.06), c(0x000000, 0.06))
 
     // MARK: - Text
 
-    static let text         = dyn(c(0xE6EBEF), c(0x29333D))
-    static let textSecondary = dyn(c(0xB8C3CE), c(0x596775))
-    static let fileMetadata = dyn(c(0xAAB6C2), c(0x65717B))
-    static let textTertiary = dyn(c(0xFFFFFF, 0.544), c(0x000000, 0.446))
-    static let textDisabled = dyn(c(0xFFFFFF, 0.363), c(0x000000, 0.362))
+    static let text         = dyn(c(0xECECEE), c(0x1F2124))
+    static let textSecondary = dyn(c(0xA9AAB0), c(0x5E6066))
+    static let fileMetadata = dyn(c(0x8E9096), c(0x7B7D83))
+    static let textTertiary = dyn(c(0xFFFFFF, 0.50), c(0x000000, 0.45))
+    static let textDisabled = dyn(c(0xFFFFFF, 0.32), c(0x000000, 0.30))
     static let textOnAccent = dyn(c(0x000000), c(0xFFFFFF))
 
     // MARK: - Accent
