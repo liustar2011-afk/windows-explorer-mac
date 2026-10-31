@@ -136,7 +136,7 @@ struct TabChip: View {
         HStack(spacing: 8) {
             Glyph(icon: icon, size: 15, color: active ? Win.text : Win.textSecondary, weight: 1.2)
             Text(title)
-                .font(Win.body(13))
+                .font(Win.font(.body))
                 .truncationMode(.middle)
                 .foregroundStyle(active ? Win.text : Win.textSecondary)
                 .lineLimit(1)
@@ -257,7 +257,7 @@ struct AddressBar: View {
             if ex.addressEditing {
                 HStack(spacing: 6) {
                     WinField(text: $ex.addressText, placeholder: L("Path"),
-                             fontSize: 12, selectAll: true,
+                             style: .secondary, selectAll: true,
                              onCommit: { s in
                                  ex.addressEditing = false
                                  ex.navigateToTypedPath(s)
@@ -321,7 +321,7 @@ struct CrumbButton: View {
                           weight: 1.2)
                 }
                 Text(crumb.title)
-                    .font(Win.body(13))
+                    .font(Win.font(.body))
                     .foregroundStyle(Win.text)
                     .lineLimit(1)
             }
@@ -379,7 +379,7 @@ struct SearchBox: View {
                 set: { ex.updateSearch($0) }
             ))
             .textFieldStyle(.plain)
-            .font(Win.body(13))
+            .font(Win.font(.body))
             .foregroundStyle(Win.text)
             .focused($focused)
             .onSubmit { ex.updateSearch(ex.tab.search) }
@@ -438,7 +438,7 @@ struct CommandBar: View {
             } content: {
                 HStack(spacing: 8) {
                     Glyph(icon: .newItem, size: 16, color: Win.text, weight: 1.2)
-                    if roomy { Text(L("New")).font(Win.body(13)).foregroundStyle(Win.text) }
+                    if roomy { Text(L("New")).font(Win.font(.body)).foregroundStyle(Win.text) }
                     Glyph(icon: .chevronDown, size: 10, color: Win.textSecondary, weight: 1.3)
                 }
             }
@@ -475,7 +475,7 @@ struct CommandBar: View {
                 } content: {
                     HStack(spacing: 8) {
                         Glyph(icon: .compress, size: 16, color: Win.text, weight: 1.15)
-                        if roomy { Text(L("Extract")).font(Win.body(13)).foregroundStyle(Win.text) }
+                        if roomy { Text(L("Extract")).font(Win.font(.body)).foregroundStyle(Win.text) }
                     }
                 }
             }
@@ -516,7 +516,7 @@ struct CommandBar: View {
                     HStack(spacing: 8) {
                         Glyph(icon: cloudFolder == nil ? .info : .cloud, size: 16,
                               color: Win.textSecondary, weight: 1.2)
-                        Text(accountLabel).font(Win.body(13)).foregroundStyle(Win.text).lineLimit(1)
+                        Text(accountLabel).font(Win.font(.body)).foregroundStyle(Win.text).lineLimit(1)
                     }
                 }
             }
@@ -527,7 +527,7 @@ struct CommandBar: View {
             } content: {
                 HStack(spacing: 8) {
                     Glyph(icon: .detailsPane, size: 16, color: Win.text, weight: 1.15)
-                    if roomy { Text(L("Details")).font(Win.body(13)).foregroundStyle(Win.text) }
+                    if roomy { Text(L("Details")).font(Win.font(.body)).foregroundStyle(Win.text) }
                 }
             }
 
@@ -789,7 +789,7 @@ struct LabeledGlyph: View {
     var body: some View {
         HStack(spacing: 8) {
             Glyph(icon: icon, size: 16, color: Win.text, weight: 1.15)
-            if showLabel { Text(title).font(Win.body(13)).foregroundStyle(Win.text) }
+            if showLabel { Text(title).font(Win.font(.body)).foregroundStyle(Win.text) }
             Glyph(icon: .chevronDown, size: 10, color: Win.textSecondary, weight: 1.3)
         }
     }

@@ -318,12 +318,12 @@ struct PaneView: View {
                     Glyph(icon: ex.tab.location.icon, size: 13,
                           color: isActive ? Win.accent : Win.textTertiary, weight: 1.2)
                     Text(ex.tab.location.displayTitle)
-                        .font(Win.body(11, weight: isActive ? .semibold : .regular))
+                        .font(Win.font(.caption, weight: isActive ? .semibold : .regular))
                         .foregroundStyle(isActive ? Win.text : Win.textSecondary)
                         .lineLimit(1)
                     Spacer(minLength: 0)
                     Text(LF("{0} items", ex.displayedItemCount))
-                        .font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                        .font(Win.font(.caption)).monospacedDigit().foregroundStyle(Win.textTertiary)
                         .fixedSize(horizontal: true, vertical: false)
                         .layoutPriority(1)
                 }

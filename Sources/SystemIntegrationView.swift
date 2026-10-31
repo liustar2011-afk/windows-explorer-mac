@@ -8,7 +8,7 @@ struct SystemIntegrationView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(L("Finder replacement"))
-                .font(Win.body(13, weight: .semibold))
+                .font(Win.font(.body, weight: .semibold))
                 .foregroundStyle(Win.text)
 
             SettingsRow(title: L("Open folders"),
@@ -38,33 +38,33 @@ struct SystemIntegrationView: View {
 
             if let error = integration.error {
                 Text(error)
-                    .font(Win.body(12))
+                    .font(Win.font(.secondary))
                     .foregroundStyle(Win.danger)
                     .fixedSize(horizontal: false, vertical: true)
             } else if integration.succeeded {
                 Text(integration.isDefault ? L("Finder routing updated.") : L("Finder routing restored."))
-                    .font(Win.body(12))
+                    .font(Win.font(.secondary))
                     .foregroundStyle(Win.accent)
             }
 
             Text(L("Replace Finder registers File Explorer as the macOS folder handler and as the global file viewer used by many Reveal/Show in Finder actions. Already-running apps may need to be restarted."))
-                .font(Win.body(12))
+                .font(Win.font(.secondary))
                 .foregroundStyle(Win.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Divider().overlay(Win.divider)
 
             Text(L("External open and reveal"))
-                .font(Win.body(13, weight: .semibold))
+                .font(Win.font(.body, weight: .semibold))
                 .foregroundStyle(Win.text)
 
             Text(L("Other apps can pass a folder to open it, or a file to select it in its folder. Multiple files in the same folder share one tab."))
-                .font(Win.body(12))
+                .font(Win.font(.secondary))
                 .foregroundStyle(Win.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text(L("Hard-coded Finder launches, the Desktop, drive mounting, and the system Open/Save dialogs still belong to macOS and may continue to use Finder."))
-                .font(Win.body(12))
+                .font(Win.font(.secondary))
                 .foregroundStyle(Win.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -85,12 +85,12 @@ struct SystemIntegrationView: View {
             HStack(spacing: 5) {
                 Glyph(icon: .checkmark, size: 12, color: Win.accent, weight: 1.5)
                 Text(L("Active"))
-                    .font(Win.body(11))
+                    .font(Win.font(.caption))
                     .foregroundStyle(Win.accent)
             }
         } else {
             Text(L("Not active"))
-                .font(Win.body(11))
+                .font(Win.font(.caption))
                 .foregroundStyle(Win.textTertiary)
         }
     }
@@ -103,7 +103,7 @@ private struct FinderDockInterceptionSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(L("Dock Finder icon"))
-                .font(Win.body(13, weight: .semibold))
+                .font(Win.font(.body, weight: .semibold))
                 .foregroundStyle(Win.text)
 
             SettingsRow(
@@ -134,13 +134,13 @@ private struct FinderDockInterceptionSettings: View {
 
             if let error = interceptor.error {
                 Text(error)
-                    .font(Win.body(11))
+                    .font(Win.font(.caption))
                     .foregroundStyle(Win.danger)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             Text(L("This only changes clicks on Finder's Dock icon. It does not remove Finder or alter the Desktop."))
-                .font(Win.body(11))
+                .font(Win.font(.caption))
                 .foregroundStyle(Win.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }

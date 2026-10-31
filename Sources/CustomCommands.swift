@@ -147,7 +147,7 @@ struct CustomCommandsSettings: View {
             HStack {
                 Text(L("Commands run in zsh with your selection in the environment: ")
                      + "$FE_SELECTION, $FE_NAMES, $FE_FIRST, $FE_DIR, $FE_COUNT.")
-                    .font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                    .font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -159,7 +159,7 @@ struct CustomCommandsSettings: View {
                 } content: {
                     HStack(spacing: 6) {
                         Glyph(icon: .plus, size: 11, color: Win.text, weight: 1.4)
-                        Text(L("New command")).font(Win.body(11)).foregroundStyle(Win.text)
+                        Text(L("New command")).font(Win.font(.control)).foregroundStyle(Win.text)
                     }
                 }
                 .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
@@ -167,7 +167,7 @@ struct CustomCommandsSettings: View {
                 WinButton(padding: 10, height: 26) {
                     NSWorkspace.shared.activateFileViewerSelecting([CustomCommands.storeURL])
                 } content: {
-                    Text(L("Show commands.json")).font(Win.body(11)).foregroundStyle(Win.text)
+                    Text(L("Show commands.json")).font(Win.font(.control)).foregroundStyle(Win.text)
                 }
                 .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
                 Spacer()
@@ -179,16 +179,16 @@ struct CustomCommandsSettings: View {
                         Glyph(icon: command.iconCase, size: 16,
                               color: Win.textSecondary, weight: 1.15)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(command.name).font(Win.body(12)).foregroundStyle(Win.text)
+                            Text(command.name).font(Win.font(.secondary)).foregroundStyle(Win.text)
                             Text(L(command.applies.rawValue))
-                                .font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                                .font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
                         }
                         Spacer(minLength: 8)
                         WinButton(padding: 8, height: 26) {
                             editing = editing?.id == command.id ? nil : command
                         } content: {
                             Text(editing?.id == command.id ? L("Done") : L("Edit"))
-                                .font(Win.body(11)).foregroundStyle(Win.text)
+                                .font(Win.font(.control)).foregroundStyle(Win.text)
                         }
                         .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
                         WinButton(tooltip: L("Delete"), padding: 6, height: 26) {
@@ -224,15 +224,15 @@ struct CustomCommandsSettings: View {
             HStack(spacing: 10) {
                 LabelledField(label: L("Name"), text: binding.name, width: 190)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(L("Applies to")).font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                    Text(L("Applies to")).font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
                     WinSegmented(options: CustomCommand.Applies.allCases.map { ($0.shortLabel, $0) },
                                  selection: binding.applies)
                 }
                 Spacer(minLength: 0)
             }
-            Text(L("Script")).font(Win.body(11)).foregroundStyle(Win.textTertiary)
+            Text(L("Script")).font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
             TextEditor(text: binding.script)
-                .font(.system(size: 11, design: .monospaced))
+                .font(Win.font(.caption, design: .monospaced))
                 .scrollContentBackground(.hidden)
                 .padding(6)
                 .frame(height: 70)
@@ -243,7 +243,7 @@ struct CustomCommandsSettings: View {
                     binding.wrappedValue.refreshAfter.toggle()
                 }
                 Text(L("Refresh the folder afterwards"))
-                    .font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                    .font(Win.font(.caption)).foregroundStyle(Win.textSecondary)
             }
         }
     }

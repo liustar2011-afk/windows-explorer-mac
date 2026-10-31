@@ -15,7 +15,7 @@ struct WinDialog<Content: View, Footer: View>: View {
         VStack(spacing: 0) {
             HStack {
                 Text(title)
-                    .font(Win.body(13, weight: .semibold))
+                    .font(Win.font(.body, weight: .semibold))
                     .foregroundStyle(Win.text)
                 Spacer()
                 CaptionButton(icon: .close, danger: true, action: onClose)
@@ -52,7 +52,7 @@ struct WinDialogButton: View {
 
     var body: some View {
         Text(title)
-            .font(Win.body(12))
+            .font(Win.font(.control))
             .foregroundStyle(primary ? Win.textOnAccent : Win.text)
             .frame(width: 96, height: 32)
             .background(
@@ -92,7 +92,7 @@ struct PropertiesDialog: View {
                     ForEach(Array([L("General"), L("Details")].enumerated()), id: \.offset) { i, name in
                         VStack(spacing: 4) {
                             Text(name)
-                                .font(Win.body(12))
+                                .font(Win.font(.secondary))
                                 .foregroundStyle(tab == i ? Win.text : Win.textSecondary)
                             Capsule().fill(tab == i ? Win.accent : .clear).frame(height: 2)
                         }
@@ -129,7 +129,7 @@ struct PropertiesDialog: View {
                 if let single { ItemIcon(item: single, size: 48) }
                 else { FolderIcon(size: 48) }
                 Text(titleName)
-                    .font(Win.body(13)).foregroundStyle(Win.text).lineLimit(2)
+                    .font(Win.font(.body)).foregroundStyle(Win.text).lineLimit(2)
             }
             .padding(.vertical, 16)
 
@@ -210,10 +210,10 @@ struct DialogRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Text(label)
-                .font(Win.body(12)).foregroundStyle(Win.textSecondary)
+                .font(Win.font(.secondary)).foregroundStyle(Win.textSecondary)
                 .frame(width: 108, alignment: .leading)
             Text(value)
-                .font(Win.body(12)).foregroundStyle(Win.text)
+                .font(Win.font(.secondary)).foregroundStyle(Win.text)
                 .textSelection(.enabled)
                 .lineLimit(3)
             Spacer(minLength: 0)
@@ -237,13 +237,13 @@ struct ConfirmDeleteDialog: View {
                 if let first = items.first { ItemIcon(item: first, size: 48) }
                 VStack(alignment: .leading, spacing: 8) {
                     Text(message)
-                        .font(Win.body(12)).foregroundStyle(Win.text)
+                        .font(Win.font(.secondary)).foregroundStyle(Win.text)
                         .fixedSize(horizontal: false, vertical: true)
                     if let f = items.first, items.count == 1 {
                         Text(f.displayName)
-                            .font(Win.body(12, weight: .semibold)).foregroundStyle(Win.text)
+                            .font(Win.font(.secondary, weight: .semibold)).foregroundStyle(Win.text)
                         Text(LF("{0}\n{1}\nDate modified: {2}", f.typeName, f.sizeText.isEmpty ? "" : L("Size: ") + f.sizeText, f.modifiedText))
-                            .font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                            .font(Win.font(.caption)).foregroundStyle(Win.textSecondary)
                     }
                 }
                 Spacer(minLength: 0)
@@ -282,7 +282,7 @@ struct ErrorDialog: View {
                     Glyph(icon: .close, size: 16, color: .white, weight: 1.6)
                 }
                 Text(message)
-                    .font(Win.body(12)).foregroundStyle(Win.text)
+                    .font(Win.font(.secondary)).foregroundStyle(Win.text)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }

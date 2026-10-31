@@ -95,11 +95,11 @@ struct ConnectServerDialog: View {
         WinDialog(title: L("Connect to server"), width: 500, onClose: onClose) {
             VStack(alignment: .leading, spacing: 14) {
                 Text(L("Address"))
-                    .font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                    .font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
                 HStack(spacing: 8) {
                     TextField("smb://server/share", text: $address)
                         .textFieldStyle(.plain)
-                        .font(Win.body(12))
+                        .font(Win.font(.secondary))
                         .foregroundStyle(Win.text)
                         .padding(.horizontal, 10)
                         .frame(height: 30)
@@ -114,16 +114,16 @@ struct ConnectServerDialog: View {
                 }
 
                 Text(L("SMB, AFP, NFS, FTP and WebDAV. macOS handles the sign-in, so no password is typed into File Explorer."))
-                    .font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                    .font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let note {
-                    Text(note).font(Win.body(11)).foregroundStyle(Win.accent)
+                    Text(note).font(Win.font(.caption)).foregroundStyle(Win.accent)
                 }
 
                 if !bookmarks.isEmpty {
                     Text(L("Recent servers"))
-                        .font(Win.body(11, weight: .semibold)).foregroundStyle(Win.textSecondary)
+                        .font(Win.font(.caption, weight: .semibold)).foregroundStyle(Win.textSecondary)
                     ScrollView {
                         VStack(spacing: 4) {
                             ForEach(bookmarks) { bookmark in
@@ -131,9 +131,9 @@ struct ConnectServerDialog: View {
                                     Glyph(icon: .network, size: 15, color: Win.textSecondary, weight: 1.15)
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(bookmark.title)
-                                            .font(Win.body(12)).foregroundStyle(Win.text)
+                                            .font(Win.font(.secondary)).foregroundStyle(Win.text)
                                         Text(bookmark.address)
-                                            .font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                                            .font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
                                             .lineLimit(1)
                                     }
                                     Spacer(minLength: 8)

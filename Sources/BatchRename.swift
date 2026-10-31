@@ -96,7 +96,7 @@ struct BatchRenameDialog: View {
         } footer: {
             if !conflicts.isEmpty {
                 Text(LF("{0} name{1} would clash", conflicts.count, conflicts.count == 1 ? "" : "s"))
-                    .font(Win.body(11)).foregroundStyle(Win.danger)
+                    .font(Win.font(.caption)).foregroundStyle(Win.danger)
                 Spacer()
             }
             WinDialogButton(title: L("Rename"), primary: true,
@@ -114,7 +114,7 @@ struct BatchRenameDialog: View {
                 LabelledField(label: L("Replace with"), text: $plan.replace, width: 170)
                 HStack(spacing: 7) {
                     WinCheckbox(checked: plan.caseSensitive) { plan.caseSensitive.toggle() }
-                    Text(L("Match case")).font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                    Text(L("Match case")).font(Win.font(.caption)).foregroundStyle(Win.textSecondary)
                 }
                 .padding(.top, 14)
                 Spacer(minLength: 0)
@@ -128,13 +128,13 @@ struct BatchRenameDialog: View {
             HStack(spacing: 14) {
                 HStack(spacing: 7) {
                     WinCheckbox(checked: plan.numbering) { plan.numbering.toggle() }
-                    Text(L("Number them")).font(Win.body(12)).foregroundStyle(Win.text)
+                    Text(L("Number them")).font(Win.font(.secondary)).foregroundStyle(Win.text)
                 }
                 if plan.numbering {
                     Stepper(LF("Start at {0}", plan.startAt), value: $plan.startAt, in: 0...9999)
-                        .font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                        .font(Win.font(.caption)).foregroundStyle(Win.textSecondary)
                     Stepper(LF("{0} digits", plan.digits), value: $plan.digits, in: 1...6)
-                        .font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                        .font(Win.font(.caption)).foregroundStyle(Win.textSecondary)
                 }
                 Spacer(minLength: 0)
                 WinSegmented(options: RenamePlan.CaseMode.allCases.map { ($0.rawValue, $0) },
@@ -147,11 +147,11 @@ struct BatchRenameDialog: View {
     private var preview: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(L("Preview")).font(Win.body(11, weight: .semibold))
+                Text(L("Preview")).font(Win.font(.caption, weight: .semibold))
                     .foregroundStyle(Win.textSecondary)
                 Spacer()
                 Text(LF("{0} of {1} will change", changedCount, items.count))
-                    .font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                    .font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
@@ -162,11 +162,11 @@ struct BatchRenameDialog: View {
                         HStack(spacing: 10) {
                             ItemIcon(item: row.item, size: 16)
                             Text(row.item.name)
-                                .font(Win.body(12)).foregroundStyle(Win.textSecondary)
+                                .font(Win.font(.secondary)).foregroundStyle(Win.textSecondary)
                                 .lineLimit(1).frame(width: 220, alignment: .leading)
                             Glyph(icon: .forward, size: 12, color: Win.textTertiary, weight: 1.2)
                             Text(row.newName)
-                                .font(Win.body(12))
+                                .font(Win.font(.secondary))
                                 .foregroundStyle(conflicts.contains(row.newName) ? Win.danger
                                                  : (row.newName == row.item.name ? Win.textTertiary : Win.text))
                                 .lineLimit(1)
@@ -207,10 +207,10 @@ struct LabelledField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(label).font(Win.body(11)).foregroundStyle(Win.textTertiary)
+            Text(label).font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
             TextField("", text: $text)
                 .textFieldStyle(.plain)
-                .font(Win.body(12))
+                .font(Win.font(.secondary))
                 .foregroundStyle(Win.text)
                 .padding(.horizontal, 8)
                 .frame(width: width, height: 26)

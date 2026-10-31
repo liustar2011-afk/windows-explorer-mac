@@ -85,13 +85,13 @@ struct WorkspacesDialog: View {
         WinDialog(title: L("Workspaces"), width: 480, onClose: onClose) {
             VStack(alignment: .leading, spacing: 14) {
                 Text(L("A workspace remembers the tabs open in each pane, the split, and the view mode."))
-                    .font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                    .font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 8) {
                     TextField(L("Name this workspace"), text: $newName)
                         .textFieldStyle(.plain)
-                        .font(Win.body(12)).foregroundStyle(Win.text)
+                        .font(Win.font(.secondary)).foregroundStyle(Win.text)
                         .padding(.horizontal, 10)
                         .frame(height: 30)
                         .background(WinRR(radius: 4).fill(Win.field))
@@ -105,7 +105,7 @@ struct WorkspacesDialog: View {
 
                 if saved.isEmpty {
                     Text(L("Nothing saved yet."))
-                        .font(Win.body(12)).foregroundStyle(Win.textSecondary)
+                        .font(Win.font(.secondary)).foregroundStyle(Win.textSecondary)
                 } else {
                     ScrollView {
                         VStack(spacing: 5) {
@@ -115,9 +115,9 @@ struct WorkspacesDialog: View {
                                           color: Win.textSecondary, weight: 1.15)
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(workspace.name)
-                                            .font(Win.body(12)).foregroundStyle(Win.text)
+                                            .font(Win.font(.secondary)).foregroundStyle(Win.text)
                                         Text(summary(workspace))
-                                            .font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                                            .font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
                                             .lineLimit(1)
                                     }
                                     Spacer(minLength: 8)
@@ -125,7 +125,7 @@ struct WorkspacesDialog: View {
                                         Workspaces.restore(workspace, into: model)
                                         onClose()
                                     } content: {
-                                        Text(L("Open")).font(Win.body(11)).foregroundStyle(Win.text)
+                                        Text(L("Open")).font(Win.font(.control)).foregroundStyle(Win.text)
                                     }
                                     .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
                                     WinButton(tooltip: L("Delete"), padding: 6, height: 26) {

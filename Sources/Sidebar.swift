@@ -144,7 +144,7 @@ struct NavRow: View {
             }
 
             Text(node.title)
-                .font(Win.body(13, weight: selected ? .medium : .regular))
+                .font(Win.font(.body, weight: selected ? .medium : .regular))
                 .foregroundStyle(Win.text)
                 .lineLimit(1)
                 .truncationMode(.tail)

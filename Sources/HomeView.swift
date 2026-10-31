@@ -81,7 +81,7 @@ struct SectionHeader: View {
             Glyph(icon: expanded ? .chevronDown : .chevronRight, size: 13,
                   color: Win.textSecondary, weight: 1.3)
             Text(title)
-                .font(Win.body(14, weight: .semibold))
+                .font(Win.font(.heading, weight: .semibold))
                 .foregroundStyle(Win.text)
         }
         .padding(.horizontal, 10)
@@ -105,7 +105,7 @@ struct Pill: View {
     var body: some View {
         HStack(spacing: 7) {
             Glyph(icon: icon, size: 14, color: Win.text, weight: 1.2)
-            Text(title).font(Win.body(12)).foregroundStyle(Win.text)
+            Text(title).font(Win.font(.secondary)).foregroundStyle(Win.text)
         }
         .padding(.horizontal, 12)
         .frame(height: 30)
@@ -137,10 +137,10 @@ struct QuickTile: View {
             }
             VStack(alignment: .leading, spacing: 1) {
                 Text(place.title)
-                    .font(Win.body(13, weight: .medium)).foregroundStyle(Win.text).lineLimit(1)
+                    .font(Win.font(.body, weight: .medium)).foregroundStyle(Win.text).lineLimit(1)
                 if !subtitle.isEmpty {
                     Text(subtitle)
-                        .font(Win.body(11)).foregroundStyle(Win.textSecondary).lineLimit(1)
+                        .font(Win.font(.caption)).foregroundStyle(Win.textSecondary).lineLimit(1)
                 }
                 if place.pinned {
                     Glyph(icon: .pin, size: 11, color: Win.textTertiary, weight: 1.2)
@@ -212,7 +212,7 @@ struct RecentTable: View {
                 }
                 Spacer(minLength: 0)
             }
-            .font(Win.body(12))
+            .font(Win.font(.secondary))
             .foregroundStyle(Win.textSecondary)
             .frame(height: 30)
             .padding(.horizontal, 12)
@@ -221,7 +221,7 @@ struct RecentTable: View {
 
             if rows.isEmpty {
                 Text(tab == 2 ? L("No shared files.") : L("No recent files."))
-                    .font(Win.body(12)).foregroundStyle(Win.textTertiary)
+                    .font(Win.font(.secondary)).foregroundStyle(Win.textTertiary)
                     .padding(.horizontal, 52).padding(.vertical, 16)
             } else {
                 ForEach(rows) { item in
@@ -273,9 +273,9 @@ struct RecentRow: View {
                 ItemIcon(item: item, size: 26)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.displayName)
-                        .font(Win.body(12)).foregroundStyle(Win.text).lineLimit(1)
+                        .font(Win.font(.secondary)).foregroundStyle(Win.text).lineLimit(1)
                     Text(parentLabel)
-                        .font(Win.body(11)).foregroundStyle(Win.textSecondary).lineLimit(1)
+                        .font(Win.font(.caption)).foregroundStyle(Win.textSecondary).lineLimit(1)
                 }
             }
             .frame(width: columns.name, alignment: .leading)
@@ -283,7 +283,7 @@ struct RecentRow: View {
 
             if let width = columns.date {
                 Text(item.modifiedText)
-                    .font(Win.body(12)).foregroundStyle(Win.textSecondary)
+                    .font(Win.font(.secondary)).foregroundStyle(Win.textSecondary)
                     .lineLimit(1)
                     .frame(width: width, alignment: .leading)
             }

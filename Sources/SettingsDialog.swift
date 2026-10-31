@@ -36,9 +36,9 @@ struct SettingsRow<Trailing: View>: View {
         HStack(spacing: 12) {
             if let icon { Glyph(icon: icon, size: 16, color: Win.textSecondary, weight: 1.15) }
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(Win.body(12)).foregroundStyle(Win.text)
+                Text(title).font(Win.font(.secondary)).foregroundStyle(Win.text)
                 if let subtitle {
-                    Text(subtitle).font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                    Text(subtitle).font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
                 }
             }
             Spacer(minLength: 12)
@@ -76,7 +76,7 @@ struct SettingsDialog: View {
                     ForEach(Array(tabs.enumerated()), id: \.offset) { i, name in
                         VStack(spacing: 4) {
                             Text(name)
-                                .font(Win.body(12))
+                                .font(Win.font(.secondary))
                                 .foregroundStyle(tab == i ? Win.text : Win.textSecondary)
                             Capsule().fill(tab == i ? Win.accent : .clear).frame(height: 2)
                         }
@@ -116,7 +116,7 @@ struct SettingsDialog: View {
 
     private var appearance: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(L("Language")).font(Win.body(13, weight: .semibold)).foregroundStyle(Win.text)
+            Text(L("Language")).font(Win.font(.secondary, weight: .semibold)).foregroundStyle(Win.text)
             ForEach(InterfaceLanguage.allCases, id: \.self) { language in
                 SettingsRow(title: language.title) {
                     RadioDot(selected: settings.language == language)
@@ -127,9 +127,9 @@ struct SettingsDialog: View {
                 .accessibilityAddTraits(settings.language == language ? [.isButton, .isSelected] : .isButton)
             }
             Text(L("Language changes take effect immediately."))
-                .font(Win.body(11)).foregroundStyle(Win.textSecondary).padding(.bottom, 10)
+                .font(Win.font(.caption)).foregroundStyle(Win.textSecondary).padding(.bottom, 10)
 
-            Text(L("Theme")).font(Win.body(12, weight: .semibold)).foregroundStyle(Win.text)
+            Text(L("Theme")).font(Win.font(.secondary, weight: .semibold)).foregroundStyle(Win.text)
             ForEach(ThemeMode.allCases, id: \.self) { mode in
                 SettingsRow(title: L(mode.rawValue)) {
                     RadioDot(selected: settings.theme == mode)
@@ -138,7 +138,17 @@ struct SettingsDialog: View {
                 .onTapGesture { settings.theme = mode }
             }
 
-            Text(L("Accent colour")).font(Win.body(12, weight: .semibold))
+            Text(L("Text size")).font(Win.font(.secondary, weight: .semibold))
+                .foregroundStyle(Win.text).padding(.top, 10)
+            ForEach(TextSize.allCases, id: \.self) { size in
+                SettingsRow(title: L(size.rawValue)) {
+                    RadioDot(selected: settings.textSize == size)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { settings.textSize = size }
+            }
+
+            Text(L("Accent colour")).font(Win.font(.secondary, weight: .semibold))
                 .foregroundStyle(Win.text).padding(.top, 10)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 10)], spacing: 10) {
                 ForEach(Settings.accents) { option in
@@ -159,7 +169,7 @@ struct SettingsDialog: View {
             }
             .padding(.horizontal, 2)
 
-            Text(L("Folder cleanup")).font(Win.body(12, weight: .semibold))
+            Text(L("Folder cleanup")).font(Win.font(.secondary, weight: .semibold))
                 .foregroundStyle(Win.text).padding(.top, 14)
             SettingsRow(title: L("Automatically clean junk files"),
                         subtitle: L("On folder entry, move .DS_Store, Thumbs.db and desktop.ini to Trash. No subfolders.")) {
@@ -170,7 +180,7 @@ struct SettingsDialog: View {
                 WinToggle(isOn: $prefs.cleanOldTemporaryFiles)
             }
 
-            Text(L("Layout")).font(Win.body(12, weight: .semibold))
+            Text(L("Layout")).font(Win.font(.secondary, weight: .semibold))
                 .foregroundStyle(Win.text).padding(.top, 14)
             SettingsRow(title: L("Window button position")) {
                 Picker(L("Window button position"), selection: $settings.windowButtonsOnLeft) {
@@ -205,23 +215,23 @@ struct SettingsDialog: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(L("Click a shortcut, then press the keys you want."))
-                    .font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                    .font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
                 Spacer()
                 WinButton(padding: 10, height: 26) {
                     settings.resetAllChords(); capturing = nil
                 } content: {
-                    Text(L("Restore defaults")).font(Win.body(11)).foregroundStyle(Win.text)
+                    Text(L("Restore defaults")).font(Win.font(.control)).foregroundStyle(Win.text)
                 }
                 .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
             }
             if let note = conflictNote {
-                Text(note).font(Win.body(11)).foregroundStyle(Win.accent)
+                Text(note).font(Win.font(.caption)).foregroundStyle(Win.accent)
             }
 
             ForEach(Command.groups, id: \.self) { group in
                 let commands = Command.allCases.filter { $0.group == group }
                 if !commands.isEmpty {
-                    Text(L(group)).font(Win.body(12, weight: .semibold))
+                    Text(L(group)).font(Win.font(.secondary, weight: .semibold))
                         .foregroundStyle(Win.text).padding(.top, 10)
                     ForEach(commands, id: \.self) { command in
                         SettingsRow(title: command.title,
@@ -276,27 +286,27 @@ struct SettingsDialog: View {
                     WinToggle(isOn: $settings.bidirectionalFinderFavorites)
                 }
                 if let error = settings.finderWriteError {
-                    Text(error).font(Win.body(11)).foregroundStyle(.red)
+                    Text(error).font(Win.font(.caption)).foregroundStyle(.red)
                 }
                 HStack {
                     Text(settings.finderSyncStatus ?? L("Reading Finder favorites…"))
-                        .font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                        .font(Win.font(.caption)).foregroundStyle(Win.textSecondary)
                     Spacer()
                     WinButton(padding: 8, height: 26) { FinderFavoritesSync.shared.requestReadAccess() } content: {
-                        Text(L("Allow read access…")).font(Win.body(11))
+                        Text(L("Allow read access…")).font(Win.font(.control))
                     }
                     WinButton(padding: 8, height: 26) { FinderFavoritesSync.shared.refresh(force: true) } content: {
-                        Text(L("Sync now")).font(Win.body(11))
+                        Text(L("Sync now")).font(Win.font(.control))
                     }
                 }
             }
             HStack {
-                Text(L("Pinned folders")).font(Win.body(12, weight: .semibold)).foregroundStyle(Win.text)
+                Text(L("Pinned folders")).font(Win.font(.secondary, weight: .semibold)).foregroundStyle(Win.text)
                 Spacer()
                 WinButton(padding: 10, height: 26) { addFolder() } content: {
                     HStack(spacing: 6) {
                         Glyph(icon: .plus, size: 11, color: Win.text, weight: 1.4)
-                        Text(L("Add folder…")).font(Win.body(11)).foregroundStyle(Win.text)
+                        Text(L("Add folder…")).font(Win.font(.control)).foregroundStyle(Win.text)
                     }
                 }
                 .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
@@ -307,16 +317,16 @@ struct SettingsDialog: View {
                             subtitle: place.url?.path,
                             icon: place.icon) {
                     if let url = place.url, settings.isFinderFavorite(url), !settings.bidirectionalFinderFavorites {
-                        Text(L("Managed by Finder")).font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                        Text(L("Managed by Finder")).font(Win.font(.caption)).foregroundStyle(Win.textSecondary)
                     } else {
                         if let url = place.url, settings.isFinderFavorite(url) {
                             WinButton(tooltip: L("Move up"), padding: 6, height: 26) {
                                 FinderFavoritesSync.shared.move(url, offset: -1)
-                            } content: { Text("↑").font(Win.body(14)) }
+                            } content: { Text("↑").font(Win.font(.item)) }
                             .disabled(settings.finderWritePending || settings.finderFavorites?.first?.url == url)
                             WinButton(tooltip: L("Move down"), padding: 6, height: 26) {
                                 FinderFavoritesSync.shared.move(url, offset: 1)
-                            } content: { Text("↓").font(Win.body(14)) }
+                            } content: { Text("↓").font(Win.font(.item)) }
                             .disabled(settings.finderWritePending || settings.finderFavorites?.last?.url == url)
                         }
                         WinButton(tooltip: L("Unpin"), padding: 6, height: 26) {
@@ -330,7 +340,7 @@ struct SettingsDialog: View {
 
             let hidden = Array(settings.hiddenPlaces).filter { !settings.isFinderFavorite(URL(fileURLWithPath: $0)) }
             if !hidden.isEmpty {
-                Text(L("Unpinned")).font(Win.body(12, weight: .semibold))
+                Text(L("Unpinned")).font(Win.font(.secondary, weight: .semibold))
                     .foregroundStyle(Win.text).padding(.top, 12)
                 ForEach(hidden, id: \.self) { path in
                     SettingsRow(title: Places.displayName(for: URL(fileURLWithPath: path)),
@@ -363,11 +373,11 @@ struct SettingsDialog: View {
     private var folderIcons: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(L("Right-click any folder and choose “Change icon” to customise it."))
-                .font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                .font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
 
             if settings.folderStyles.isEmpty {
                 Text(L("No customised folders yet."))
-                    .font(Win.body(12)).foregroundStyle(Win.textSecondary)
+                    .font(Win.font(.secondary)).foregroundStyle(Win.textSecondary)
                     .padding(.top, 12)
             } else {
                 ForEach(settings.folderStyles.keys.sorted(), id: \.self) { path in
@@ -376,8 +386,8 @@ struct SettingsDialog: View {
                         CustomFolderIcon(style: style, size: 28)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(Places.displayName(for: URL(fileURLWithPath: path)))
-                                .font(Win.body(12)).foregroundStyle(Win.text)
-                            Text(path).font(Win.body(11)).foregroundStyle(Win.textTertiary).lineLimit(1)
+                                .font(Win.font(.secondary)).foregroundStyle(Win.text)
+                            Text(path).font(Win.font(.caption)).foregroundStyle(Win.textTertiary).lineLimit(1)
                         }
                         Spacer(minLength: 12)
                         WinButton(tooltip: L("Reset to the default folder icon"), padding: 6, height: 26) {
@@ -407,11 +417,11 @@ extension SettingsDialog {
                     .frame(width: 64, height: 64)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(L("File Explorer"))
-                        .font(Win.body(16, weight: .semibold)).foregroundStyle(Win.text)
+                        .font(Win.font(.title, weight: .semibold)).foregroundStyle(Win.text)
                     Text(LF("Version {0}", Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"))
-                        .font(Win.body(12)).foregroundStyle(Win.textSecondary)
+                        .font(Win.font(.secondary)).foregroundStyle(Win.textSecondary)
                     Text(L("The Windows 11 File Explorer, rebuilt natively for macOS."))
-                        .font(Win.body(12)).foregroundStyle(Win.textSecondary)
+                        .font(Win.font(.secondary)).foregroundStyle(Win.textSecondary)
                 }
                 Spacer(minLength: 0)
             }
@@ -421,7 +431,7 @@ extension SettingsDialog {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text(L("Created by Alex Degryse"))
-                    .font(Win.body(13, weight: .semibold))
+                    .font(Win.font(.body, weight: .semibold))
                     .foregroundStyle(Win.text)
                 LinkRow(title: "linkedin.com/in/alexdegryse",
                         subtitle: L("Connect on LinkedIn"),
@@ -437,7 +447,7 @@ extension SettingsDialog {
             Divider().overlay(Win.divider)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(L("Colophon")).font(Win.body(12, weight: .semibold)).foregroundStyle(Win.text)
+                Text(L("Colophon")).font(Win.font(.secondary, weight: .semibold)).foregroundStyle(Win.text)
                 Text(Localization.isChinese ? L("About implementation") : """
                      Written in Swift with AppKit and SwiftUI. The Fluent icons are \
                      redrawn as vector geometry on Windows' own 16pt design grid, \
@@ -445,7 +455,7 @@ extension SettingsDialog {
                      Licensed under Apache 2.0: redistribute it freely, but keep the \
                      credit with it. Not affiliated with Microsoft.
                      """)
-                    .font(Win.body(11))
+                    .font(Win.font(.caption))
                     .foregroundStyle(Win.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -466,9 +476,9 @@ struct LinkRow: View {
         HStack(spacing: 12) {
             Glyph(icon: icon, size: 16, color: Win.accent, weight: 1.2)
             VStack(alignment: .leading, spacing: 1) {
-                Text(subtitle).font(Win.body(12)).foregroundStyle(Win.text)
+                Text(subtitle).font(Win.font(.secondary)).foregroundStyle(Win.text)
                 Text(title)
-                    .font(Win.body(11))
+                    .font(Win.font(.caption))
                     .foregroundStyle(Win.accent)
                     .underline(hovering)
             }
@@ -506,7 +516,7 @@ struct ShortcutChip: View {
 
     var body: some View {
         Text(text)
-            .font(Win.body(11))
+            .font(Win.font(.control))
             .foregroundStyle(active ? Win.accent : Win.text)
             .padding(.horizontal, 10)
             .frame(height: 26)
@@ -592,11 +602,11 @@ struct FolderIconDialog: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 16) {
                     CustomFolderIcon(style: style, size: 48)
-                    Text(item.displayName).font(Win.body(13)).foregroundStyle(Win.text)
+                    Text(item.displayName).font(Win.font(.body)).foregroundStyle(Win.text)
                     Spacer()
                 }
 
-                Text(L("Icon")).font(Win.body(12, weight: .semibold)).foregroundStyle(Win.text)
+                Text(L("Icon")).font(Win.font(.secondary, weight: .semibold)).foregroundStyle(Win.text)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 42), spacing: 6)], spacing: 6) {
                     IconChoice(selected: style.icon == "folder") {
                         FolderIcon(size: 22)
@@ -610,7 +620,7 @@ struct FolderIconDialog: View {
                     }
                 }
 
-                Text(L("Colour")).font(Win.body(12, weight: .semibold)).foregroundStyle(Win.text)
+                Text(L("Colour")).font(Win.font(.secondary, weight: .semibold)).foregroundStyle(Win.text)
                 HStack(spacing: 8) {
                     ForEach(palette, id: \.self) { hex in
                         Circle()

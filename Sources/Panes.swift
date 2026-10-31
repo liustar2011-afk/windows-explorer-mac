@@ -12,13 +12,13 @@ struct StatusBar: View {
     var body: some View {
         HStack(spacing: 0) {
             Text(ex.statusText)
-                .font(Win.body(12))
+                .font(Win.font(.secondary)).monospacedDigit()
                 .foregroundStyle(Win.textSecondary)
                 .padding(.leading, 12)
 
             if let sel = ex.selectionText {
                 Rectangle().fill(Win.divider).frame(width: 1, height: 12).padding(.horizontal, 10)
-                Text(sel).font(Win.body(12)).foregroundStyle(Win.textSecondary)
+                Text(sel).font(Win.font(.secondary)).monospacedDigit().foregroundStyle(Win.textSecondary)
             }
 
             Spacer(minLength: 8)
@@ -31,7 +31,7 @@ struct StatusBar: View {
                         ProgressTrack(fraction: transfers.overallFraction)
                             .frame(width: 90, height: 4)
                         Text(transfers.summary)
-                            .font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                            .font(Win.font(.caption)).foregroundStyle(Win.textSecondary)
                             .lineLimit(1)
                     }
                     .padding(.horizontal, 8)
@@ -87,13 +87,13 @@ struct TransfersPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(L("File transfers"))
-                    .font(Win.body(13, weight: .semibold)).foregroundStyle(Win.text)
+                    .font(Win.font(.body, weight: .semibold)).foregroundStyle(Win.text)
                 Spacer()
                 if transfers.jobs.contains(where: { !$0.isActive }) {
                     WinButton(padding: 8, height: 24) {
                         transfers.clearFinished()
                     } content: {
-                        Text(L("Clear finished")).font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                        Text(L("Clear finished")).font(Win.font(.control)).foregroundStyle(Win.textSecondary)
                     }
                 }
                 WinButton(padding: 6, height: 24) {
@@ -110,7 +110,7 @@ struct TransfersPanel: View {
 
             if transfers.jobs.isEmpty {
                 Text(L("Nothing is being copied or moved."))
-                    .font(Win.body(12)).foregroundStyle(Win.textTertiary)
+                    .font(Win.font(.secondary)).foregroundStyle(Win.textTertiary)
                     .padding(16)
             } else {
                 ScrollView {
@@ -152,12 +152,12 @@ struct TransferRow: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(LF("{0} to {1}", L(job.kind.rawValue), job.destination.map { Places.displayName(for: $0) } ?? L("Recycle Bin")))
-                    .font(Win.body(12)).foregroundStyle(Win.text).lineLimit(1)
+                    .font(Win.font(.secondary)).foregroundStyle(Win.text).lineLimit(1)
                 if job.isActive {
                     ProgressTrack(fraction: job.fraction).frame(height: 4)
                 }
                 Text(job.currentName.isEmpty ? statusText : "\(job.currentName)  ·  \(statusText)")
-                    .font(Win.body(11))
+                    .font(Win.font(.caption))
                     .foregroundStyle(job.state == .finished ? Win.textTertiary : Win.textSecondary)
                     .lineLimit(1)
             }
@@ -200,7 +200,7 @@ struct DetailsPane: View {
                 single(item)
             } else {
                 Text(L("Select a file to see its details."))
-                    .font(Win.body(12)).foregroundStyle(Win.textTertiary)
+                    .font(Win.font(.secondary)).foregroundStyle(Win.textTertiary)
                     .padding(16)
             }
             Spacer(minLength: 0)
@@ -215,7 +215,7 @@ struct DetailsPane: View {
         let bytes = sel.reduce(Int64(0)) { $0 + $1.size }
         return VStack(alignment: .leading, spacing: 14) {
             Text(LF("{0} items selected", sel.count))
-                .font(Win.body(14, weight: .semibold)).foregroundStyle(Win.text)
+                .font(Win.font(.heading, weight: .semibold)).foregroundStyle(Win.text)
             PropRow(label: L("Total size"), value: FileItem.friendlySize(bytes))
             PropRow(label: L("Folders"), value: "\(sel.filter(\.isDirectory).count)")
             PropRow(label: L("Files"), value: "\(sel.filter { !$0.isDirectory }.count)")
@@ -228,12 +228,12 @@ struct DetailsPane: View {
             VStack(spacing: 10) {
                 ItemIcon(item: item, size: 96)
                 Text(item.displayName)
-                    .font(Win.body(13, weight: .semibold))
+                    .font(Win.font(.body, weight: .semibold))
                     .foregroundStyle(Win.text)
                     .multilineTextAlignment(.center)
                     .lineLimit(3)
                 Text(item.typeName)
-                    .font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                    .font(Win.font(.caption)).foregroundStyle(Win.textSecondary)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 22)
@@ -260,8 +260,8 @@ struct PropRow: View {
     let value: String
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(Win.body(11)).foregroundStyle(Win.textTertiary)
-            Text(value).font(Win.body(12)).foregroundStyle(Win.text)
+            Text(label).font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
+            Text(value).font(Win.font(.secondary)).foregroundStyle(Win.text)
                 .lineLimit(3).textSelection(.enabled)
         }
     }
@@ -284,11 +284,11 @@ struct PreviewPane: View {
                 } else {
                     ItemIcon(item: item, size: 96).padding(.top, 40)
                     Text(L("No preview available"))
-                        .font(Win.body(12)).foregroundStyle(Win.textTertiary).padding(.top, 8)
+                        .font(Win.font(.secondary)).foregroundStyle(Win.textTertiary).padding(.top, 8)
                 }
             } else {
                 Text(L("Select a file to preview."))
-                    .font(Win.body(12)).foregroundStyle(Win.textTertiary).padding(16)
+                    .font(Win.font(.secondary)).foregroundStyle(Win.textTertiary).padding(16)
             }
             Spacer(minLength: 0)
         }

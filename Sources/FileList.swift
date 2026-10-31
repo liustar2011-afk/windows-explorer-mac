@@ -285,7 +285,7 @@ struct EmptyFolderView: View {
     var body: some View {
         VStack(spacing: 6) {
             Text(ex.tab.searching ? L("No items match your search.") : L("This folder is empty."))
-                .font(Win.body(14))
+                .font(Win.font(.item))
                 .foregroundStyle(Win.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -393,7 +393,7 @@ struct DetailsView: View {
     @AppStorage("details.typeWidth", store: Store.defaults) private var typeWidth: Double = 140
     @AppStorage("details.sizeWidth", store: Store.defaults) private var sizeWidth: Double = 90
 
-    private var rowHeight: CGFloat { prefs.compactMode ? 24 : 34 }
+    private var rowHeight: CGFloat { Win.scaled(prefs.compactMode ? 24 : 34) }
 
     var body: some View {
         GeometryReader { geo in
@@ -471,7 +471,7 @@ struct ColumnHeader: View {
                 HStack(spacing: 0) {
                     if trailing { Spacer(minLength: 0) }
                     Text(title)
-                        .font(Win.body(12, weight: .medium))
+                        .font(Win.font(.secondary, weight: .medium))
                         .foregroundStyle(Win.textSecondary)
                         .lineLimit(1)
                     if !trailing { Spacer(minLength: 0) }
@@ -563,7 +563,8 @@ struct DetailsRow: View {
     private var cutOut: Bool { Clipboard.cutPaths.contains(item.url.path) }
 
     var body: some View {
-        HStack(spacing: 0) {
+        // Names and metadata differ in size, so align their baselines rather than their centres.
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
             HStack(spacing: 10) {
                 if prefs.itemCheckBoxes {
                     WinCheckbox(checked: selected) {
@@ -574,10 +575,10 @@ struct DetailsRow: View {
                     .opacity(cutOut ? 0.45 : 1)
                 if ex.tab.editing == item.id {
                     RenameField(ex: ex, item: item)
-                        .frame(height: 20)
+                        .frame(height: Win.scaled(20))
                 } else {
                     Text(item.displayName)
-                        .font(Win.body(14))
+                        .font(Win.font(.item))
                         .foregroundStyle(highlighted ? Win.selectionText : (item.isHidden ? Win.textTertiary : Win.text))
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -589,7 +590,7 @@ struct DetailsRow: View {
 
             if let width = columns.date {
                 Text(item.modifiedText)
-                    .font(Win.body(13)).foregroundStyle(highlighted ? Win.selectionText : Win.fileMetadata)
+                    .font(Win.font(.body)).monospacedDigit().foregroundStyle(highlighted ? Win.selectionText : Win.fileMetadata)
                     .lineLimit(1)
                     .padding(.leading, 6)
                     .frame(width: width, alignment: .leading)
@@ -597,7 +598,7 @@ struct DetailsRow: View {
 
             if let width = columns.type {
                 Text(item.typeName)
-                    .font(Win.body(13)).foregroundStyle(highlighted ? Win.selectionText : Win.fileMetadata)
+                    .font(Win.font(.body)).foregroundStyle(highlighted ? Win.selectionText : Win.fileMetadata)
                     .lineLimit(1)
                     .padding(.leading, 6)
                     .frame(width: width, alignment: .leading)
@@ -605,7 +606,7 @@ struct DetailsRow: View {
 
             if let width = columns.size {
                 Text(item.sizeText)
-                    .font(Win.body(13)).foregroundStyle(highlighted ? Win.selectionText : Win.fileMetadata)
+                    .font(Win.font(.body)).monospacedDigit().foregroundStyle(highlighted ? Win.selectionText : Win.fileMetadata)
                     .lineLimit(1)
                     .padding(.trailing, 10)
                     .frame(width: width, alignment: .trailing)
@@ -635,7 +636,7 @@ struct RenameField: View {
     }
 
     var body: some View {
-        WinField(text: $text, fontSize: 14,
+        WinField(text: $text, style: .item,
                  selectStem: !item.isDirectory,
                  selectAll: item.isDirectory,
                  onCommit: { s in ex.commitRename(item, to: s) },
@@ -659,7 +660,8 @@ struct IconGridView: View {
     @ObservedObject var prefs = Prefs.shared
 
     var body: some View {
-        let cell = prefs.viewMode.cellSize
+        let base = prefs.viewMode.cellSize
+        let cell = CGSize(width: Win.scaled(base.width), height: Win.scaled(base.height))
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: cell.width, maximum: cell.width * 1.4),
@@ -701,10 +703,10 @@ struct IconCell: View {
             ItemIcon(item: item, size: size)
                 .opacity(cutOut ? 0.45 : 1)
             if ex.tab.editing == item.id {
-                RenameField(ex: ex, item: item).frame(height: 20).padding(.horizontal, 4)
+                RenameField(ex: ex, item: item).frame(height: Win.scaled(20)).padding(.horizontal, 4)
             } else {
                 Text(item.displayName)
-                    .font(Win.body(14))
+                    .font(Win.font(.item))
                     .foregroundStyle(highlighted ? Win.selectionText : Win.text)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
@@ -741,7 +743,8 @@ struct ListFlowView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let rowH: CGFloat = 22
+            let rowH = Win.scaled(22)
+            let columnWidth = Win.scaled(220)
             let perColumn = max(1, Int((geo.size.height - 24) / rowH))
             let columns = stride(from: 0, to: ex.tab.items.count, by: perColumn).map {
                 Array(ex.tab.items[$0..<min($0 + perColumn, ex.tab.items.count)])
@@ -751,10 +754,10 @@ struct ListFlowView: View {
                     ForEach(Array(columns.enumerated()), id: \.offset) { _, col in
                         VStack(alignment: .leading, spacing: 0) {
                             ForEach(col) { item in
-                                SmallRow(ex: ex, menus: menus, item: item, width: 220, height: rowH)
+                                SmallRow(ex: ex, menus: menus, item: item, width: columnWidth, height: rowH)
                             }
                         }
-                        .frame(width: 220)
+                        .frame(width: columnWidth)
                     }
                 }
                 .padding(12)
@@ -778,10 +781,10 @@ struct SmallRow: View {
         HStack(spacing: 8) {
             ItemIcon(item: item, size: 16)
             if ex.tab.editing == item.id {
-                RenameField(ex: ex, item: item).frame(height: 18)
+                RenameField(ex: ex, item: item).frame(height: Win.scaled(18))
             } else {
                 Text(item.displayName)
-                    .font(Win.body(14)).foregroundStyle(highlighted ? Win.selectionText : Win.text)
+                    .font(Win.font(.item)).foregroundStyle(highlighted ? Win.selectionText : Win.text)
                     .lineLimit(1).truncationMode(.tail)
             }
             Spacer(minLength: 0)
@@ -838,19 +841,19 @@ struct TileCell: View {
             ItemIcon(item: item, size: 48)
             VStack(alignment: .leading, spacing: 2) {
                 if ex.tab.editing == item.id {
-                    RenameField(ex: ex, item: item).frame(height: 20)
+                    RenameField(ex: ex, item: item).frame(height: Win.scaled(20))
                 } else {
-                    Text(item.displayName).font(Win.body(14)).foregroundStyle(highlighted ? Win.selectionText : Win.text).lineLimit(1)
+                    Text(item.displayName).font(Win.font(.item)).foregroundStyle(highlighted ? Win.selectionText : Win.text).lineLimit(1)
                 }
-                Text(item.typeName).font(Win.body(13)).foregroundStyle(highlighted ? Win.selectionText : Win.textSecondary).lineLimit(1)
+                Text(item.typeName).font(Win.font(.body)).foregroundStyle(highlighted ? Win.selectionText : Win.textSecondary).lineLimit(1)
                 if !item.sizeText.isEmpty {
-                    Text(item.sizeText).font(Win.body(13)).foregroundStyle(highlighted ? Win.selectionText : Win.textTertiary)
+                    Text(item.sizeText).font(Win.font(.body)).monospacedDigit().foregroundStyle(highlighted ? Win.selectionText : Win.textTertiary)
                 }
             }
             Spacer(minLength: 0)
         }
         .padding(8)
-        .frame(height: 72)
+        .frame(height: Win.scaled(72))
         .background(WinRR(radius: 8).fill(highlighted ? Win.currentRow : .clear))
         .itemInteraction(ex, menus, item)
     }
@@ -869,17 +872,17 @@ struct ContentRow: View {
             ItemIcon(item: item, size: 32)
             VStack(alignment: .leading, spacing: 2) {
                 if ex.tab.editing == item.id {
-                    RenameField(ex: ex, item: item).frame(height: 20)
+                    RenameField(ex: ex, item: item).frame(height: Win.scaled(20))
                 } else {
-                    Text(item.displayName).font(Win.body(14)).foregroundStyle(highlighted ? Win.selectionText : Win.text).lineLimit(1)
+                    Text(item.displayName).font(Win.font(.item)).foregroundStyle(highlighted ? Win.selectionText : Win.text).lineLimit(1)
                 }
-                Text(item.modifiedText).font(Win.body(13)).foregroundStyle(highlighted ? Win.selectionText : Win.textSecondary)
+                Text(item.modifiedText).font(Win.font(.body)).monospacedDigit().foregroundStyle(highlighted ? Win.selectionText : Win.textSecondary)
             }
             Spacer(minLength: 0)
-            Text(item.sizeText).font(Win.body(13)).foregroundStyle(highlighted ? Win.selectionText : Win.textSecondary)
+            Text(item.sizeText).font(Win.font(.body)).monospacedDigit().foregroundStyle(highlighted ? Win.selectionText : Win.textSecondary)
         }
         .padding(.horizontal, 10)
-        .frame(height: 56)
+        .frame(height: Win.scaled(56))
         .background(WinRR(radius: 8).fill(highlighted ? Win.currentRow : .clear))
         .itemInteraction(ex, menus, item)
     }

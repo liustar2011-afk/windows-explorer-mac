@@ -213,12 +213,12 @@ struct CompareDialog: View {
                 }
                 HStack(spacing: 7) {
                     WinCheckbox(checked: differencesOnly) { differencesOnly.toggle() }
-                    Text(L("Differences only")).font(Win.body(12)).foregroundStyle(Win.text)
+                    Text(L("Differences only")).font(Win.font(.secondary)).foregroundStyle(Win.text)
                 }
                 Spacer()
                 if scanned {
                     Text(LF("{0} only left · {1} only right · {2} differ", counts.left, counts.right, counts.diff))
-                        .font(Win.body(11)).foregroundStyle(Win.textSecondary)
+                        .font(Win.font(.caption)).foregroundStyle(Win.textSecondary)
                 }
             }
         }
@@ -229,12 +229,12 @@ struct CompareDialog: View {
         Group {
             if !scanned {
                 Text(L("Pick two folders and compare them."))
-                    .font(Win.body(12)).foregroundStyle(Win.textTertiary)
+                    .font(Win.font(.secondary)).foregroundStyle(Win.textTertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(16)
             } else if shown.isEmpty {
                 Text(differencesOnly ? L("The folders match.") : L("Both folders are empty."))
-                    .font(Win.body(12)).foregroundStyle(Win.textSecondary)
+                    .font(Win.font(.secondary)).foregroundStyle(Win.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(16)
             } else {
@@ -245,11 +245,11 @@ struct CompareDialog: View {
                                 Glyph(icon: entry.isDirectory ? .folderOutline : .document,
                                       size: 14, color: Win.textSecondary, weight: 1.15)
                                 Text(entry.relativePath)
-                                    .font(Win.body(12)).foregroundStyle(Win.text)
+                                    .font(Win.font(.secondary)).foregroundStyle(Win.text)
                                     .lineLimit(1)
                                 Spacer(minLength: 12)
                                 Text(L(entry.status.rawValue))
-                                    .font(Win.body(11))
+                                    .font(Win.font(.caption))
                                     .foregroundStyle(colour(entry.status))
                             }
                             .padding(.horizontal, 16)
@@ -314,10 +314,10 @@ struct FolderPickerRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Text(title)
-                .font(Win.body(12)).foregroundStyle(Win.textSecondary)
+                .font(Win.font(.secondary)).foregroundStyle(Win.textSecondary)
                 .frame(width: 44, alignment: .leading)
             Text(url?.path ?? L("Choose a folder"))
-                .font(Win.body(12))
+                .font(Win.font(.secondary))
                 .foregroundStyle(url == nil ? Win.textTertiary : Win.text)
                 .lineLimit(1).truncationMode(.head)
                 .padding(.horizontal, 10)
@@ -333,7 +333,7 @@ struct FolderPickerRow: View {
                     if response == .OK, let picked = panel.url { url = picked }
                 }
             } content: {
-                Text(L("Browse")).font(Win.body(11)).foregroundStyle(Win.text)
+                Text(L("Browse")).font(Win.font(.control)).foregroundStyle(Win.text)
             }
             .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
         }

@@ -123,17 +123,51 @@ enum Win {
 
     // MARK: - Type ramp
 
-    /// System typography provides consistent Latin and Chinese font fallback.
-    static func body(_ size: CGFloat = 13, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight)
+    /// Named text roles, so each role's size is set in one place.
+    enum TextStyle {
+        /// Hints, paths, counts and timestamps.
+        case caption
+        /// Descriptions, settings section labels and the status bar.
+        case secondary
+        /// Labels on dialog and settings buttons.
+        case control
+        /// Window chrome, sidebar, command bar and file metadata.
+        case body
+        /// File and folder names.
+        case item
+        /// Section headings.
+        case heading
+        /// Page titles.
+        case title
+
+        var size: CGFloat {
+            switch self {
+            case .caption: return 11
+            case .secondary, .control: return 12
+            case .body: return 13
+            case .item, .heading: return 14
+            case .title: return 16
+            }
+        }
     }
 
-    static let uiFontName: String = {
-        for candidate in ["Segoe UI Variable Text", "Segoe UI", "SF Pro Text", "Helvetica Neue"] {
-            if NSFont(name: candidate, size: 12) != nil { return candidate }
-        }
-        return "Helvetica Neue"
-    }()
+    /// Multiplier from the Text size setting.
+    static var textScale: CGFloat { Settings.shared.textSize.scale }
+
+    /// System typography provides consistent Latin and Chinese font fallback.
+    static func font(_ style: TextStyle, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
+        .system(size: style.size * textScale, weight: weight, design: design)
+    }
+
+    /// The AppKit equivalent of `font(_:)`, for text fields.
+    static func nsFont(_ style: TextStyle) -> NSFont {
+        .systemFont(ofSize: style.size * textScale)
+    }
+
+    /// Scales a height that holds a line of text, so larger text keeps its room.
+    static func scaled(_ value: CGFloat) -> CGFloat {
+        (value * textScale).rounded()
+    }
 }
 
 /// Rounded rect matching Win11's corner radii.

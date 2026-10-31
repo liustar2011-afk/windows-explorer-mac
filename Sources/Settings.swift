@@ -295,6 +295,20 @@ enum ThemeMode: String, Codable, CaseIterable {
     }
 }
 
+enum TextSize: String, Codable, CaseIterable {
+    case standard = "Default"
+    case large = "Large"
+    case extraLarge = "Extra large"
+
+    var scale: CGFloat {
+        switch self {
+        case .standard: return 1
+        case .large: return 1.1
+        case .extraLarge: return 1.2
+        }
+    }
+}
+
 struct AccentOption: Identifiable, Hashable {
     let id: String
     let name: String
@@ -311,6 +325,7 @@ final class Settings: ObservableObject {
     @Published var language: InterfaceLanguage { didSet { save(); NotificationCenter.default.post(name: .interfaceLanguageChanged, object: nil) } }
     @Published var windowButtonsOnLeft: Bool { didSet { save() } }
     @Published var theme: ThemeMode { didSet { save(); applyTheme() } }
+    @Published var textSize: TextSize { didSet { save() } }
     @Published var accentID: String { didSet { save() } }
     @Published var bindings: [String: [KeyChord]] { didSet { save() } }
     @Published var folderStyles: [String: FolderStyle] { didSet { save() } }
@@ -343,6 +358,8 @@ final class Settings: ObservableObject {
             ?? d.string(forKey: "interfaceLanguage") ?? "system") ?? .system
         windowButtonsOnLeft = d.bool(forKey: "windowButtonsOnLeft")
         theme = ThemeMode(rawValue: d.string(forKey: "theme") ?? "") ?? .system
+        textSize = TextSize(rawValue: ProcessInfo.processInfo.environment["WINEXP_TEXTSIZE"]
+            ?? d.string(forKey: "textSize") ?? "") ?? .standard
         accentID = d.string(forKey: "accentID") ?? "blue"
         bindings = Settings.decode([String: [KeyChord]].self, d.data(forKey: "bindings")) ?? [:]
         folderStyles = Settings.decode([String: FolderStyle].self, d.data(forKey: "folderStyles")) ?? [:]
@@ -361,6 +378,7 @@ final class Settings: ObservableObject {
         d.set(language.rawValue, forKey: "interfaceLanguage")
         d.set(windowButtonsOnLeft, forKey: "windowButtonsOnLeft")
         d.set(theme.rawValue, forKey: "theme")
+        d.set(textSize.rawValue, forKey: "textSize")
         d.set(accentID, forKey: "accentID")
         d.set(try? JSONEncoder().encode(bindings), forKey: "bindings")
         d.set(try? JSONEncoder().encode(folderStyles), forKey: "folderStyles")

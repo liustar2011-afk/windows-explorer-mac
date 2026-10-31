@@ -53,7 +53,7 @@ struct ShelfPane: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Glyph(icon: .compress, size: 15, color: Win.textSecondary, weight: 1.15)
-                Text(L("Shelf")).font(Win.body(12, weight: .semibold)).foregroundStyle(Win.text)
+                Text(L("Shelf")).font(Win.font(.secondary, weight: .semibold)).foregroundStyle(Win.text)
                 Spacer(minLength: 4)
                 if !shelf.items.isEmpty {
                     WinButton(tooltip: L("Empty the shelf"), padding: 6, height: 24) {
@@ -76,7 +76,7 @@ struct ShelfPane: View {
             if shelf.items.isEmpty {
                 VStack(spacing: 6) {
                     Text(L("Drop files here to hold on to them."))
-                        .font(Win.body(11)).foregroundStyle(Win.textTertiary)
+                        .font(Win.font(.caption)).foregroundStyle(Win.textTertiary)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -100,7 +100,7 @@ struct ShelfPane: View {
                           padding: 8, height: 28) {
                     send(kind: .copy)
                 } content: {
-                    Text(L("Copy here")).font(Win.body(11)).foregroundStyle(Win.text)
+                    Text(L("Copy here")).font(Win.font(.control)).foregroundStyle(Win.text)
                 }
                 .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
 
@@ -109,7 +109,7 @@ struct ShelfPane: View {
                           padding: 8, height: 28) {
                     send(kind: .move)
                 } content: {
-                    Text(L("Move here")).font(Win.body(11)).foregroundStyle(Win.text)
+                    Text(L("Move here")).font(Win.font(.control)).foregroundStyle(Win.text)
                 }
                 .overlay(WinRR(radius: 4).stroke(Win.stroke, lineWidth: 1))
             }
@@ -161,7 +161,7 @@ struct ShelfRow: View {
         HStack(spacing: 8) {
             ItemIcon(item: item, size: 16)
             Text(item.displayName)
-                .font(Win.body(11)).foregroundStyle(Win.text)
+                .font(Win.font(.caption)).foregroundStyle(Win.text)
                 .lineLimit(1).truncationMode(.middle)
             Spacer(minLength: 2)
             if hovering {

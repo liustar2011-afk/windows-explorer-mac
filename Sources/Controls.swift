@@ -207,7 +207,7 @@ struct MenuRow: View {
             Divider().overlay(Win.divider).padding(.vertical, 4).padding(.horizontal, 10)
         } else if entry.header {
             Text(entry.title)
-                .font(Win.body(11, weight: .semibold))
+                .font(Win.font(.caption, weight: .semibold))
                 .foregroundStyle(Win.textTertiary)
                 .padding(.horizontal, 14).padding(.top, 6).padding(.bottom, 3)
         } else {
@@ -224,7 +224,7 @@ struct MenuRow: View {
                 .frame(width: 18, height: 16)
 
                 Text(entry.title)
-                    .font(Win.body(12))
+                    .font(Win.font(.secondary))
                     .foregroundStyle(entry.enabled ? Win.text : Win.textDisabled)
                     .lineLimit(1)
 
@@ -232,7 +232,7 @@ struct MenuRow: View {
 
                 if let s = entry.shortcut {
                     Text(s)
-                        .font(Win.body(11))
+                        .font(Win.font(.caption))
                         .foregroundStyle(Win.textTertiary)
                 }
                 if entry.submenu != nil {
@@ -295,7 +295,7 @@ struct WinField: NSViewRepresentable {
     @ObservedObject private var interfaceSettings = Settings.shared
     @Binding var text: String
     var placeholder: String = ""
-    var fontSize: CGFloat = 12
+    var style: Win.TextStyle = .secondary
     var selectStem: Bool = false
     var selectAll: Bool = true
     var onCommit: (String) -> Void = { _ in }
@@ -310,7 +310,7 @@ struct WinField: NSViewRepresentable {
         f.isBordered = false
         f.drawsBackground = false
         f.focusRingType = .none
-        f.font = NSFont(name: Win.uiFontName, size: fontSize) ?? .systemFont(ofSize: fontSize)
+        f.font = Win.nsFont(style)
         f.placeholderString = L(placeholder)
         f.lineBreakMode = .byTruncatingTail
         f.cell?.usesSingleLineMode = true
@@ -338,6 +338,8 @@ struct WinField: NSViewRepresentable {
         if nsView.stringValue != text { nsView.stringValue = text }
         nsView.placeholderString = L(placeholder)
         nsView.textColor = NSColor(Win.text)
+        let font = Win.nsFont(style)
+        if nsView.font != font { nsView.font = font }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -426,7 +428,7 @@ struct WinSegmented<T: Hashable>: View {
             ForEach(Array(options.enumerated()), id: \.offset) { _, option in
                 let isOn = option.value == selection
                 Text(L(option.label))
-                    .font(Win.body(11))
+                    .font(Win.font(.caption))
                     .foregroundStyle(isOn ? Win.textOnAccent : Win.text)
                     .lineLimit(1)
                     .padding(.horizontal, 10)
