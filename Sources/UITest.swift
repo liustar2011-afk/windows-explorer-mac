@@ -14,7 +14,7 @@ enum UITest {
 
     private static var passed = 0
     private static var failed = 0
-    private static var steps: [(delay: Double, run: () -> Void)] = []
+    private static var steps: [(delay: Double, run: (@escaping () -> Void) -> Void)] = []
     private static var root: URL!
     private static let fm = FileManager.default
 
@@ -150,6 +150,47 @@ enum UITest {
         step(0.5) { check("double-clicking a folder opens it", ex.currentDirectory?.path == path("Folder A")) }
         step { ex.back() }
         step(0.4) { check("back returns to the parent", ex.currentDirectory?.path == root.path) }
+
+        // Switching tabs must respond at once, not after a double-click timeout.
+        step { ex.openTab(.folder(URL(fileURLWithPath: path("Folder A")))) }
+        asyncStep(0.5) { done in
+            let first = ex.tabs.firstIndex { $0.location == .folder(root) } ?? 0
+            click(anchor("tab:\(root.lastPathComponent)"))
+            waitUntil({ ex.active == first }) { elapsed in
+                let ms = elapsed.map { Int($0 * 1000) }
+                check("clicking a tab switches to it within 150 ms [\(ms.map { "\($0) ms" } ?? "never")]",
+                      (ms ?? .max) <= 150)
+                done()
+            }
+        }
+        step { ex.closeTab(ex.tabs.count - 1) }
+
+        // A big folder must not make the switch wait on the disk either.
+        step {
+            let big = root.appendingPathComponent("Big")
+            try? fm.createDirectory(at: big, withIntermediateDirectories: true)
+            for i in 0..<3000 { fm.createFile(atPath: big.appendingPathComponent("file \(i).txt").path, contents: nil) }
+            ex.openTab(.folder(big))
+        }
+        asyncStep(0.8) { done in
+            let first = ex.tabs.firstIndex { $0.location == .folder(root) } ?? 0
+            ex.selectTab(first)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                let bigTab = ex.tabs.count - 1
+                click(anchor("tab:Big"))
+                waitUntil({ ex.active == bigTab }) { elapsed in
+                    let ms = elapsed.map { Int($0 * 1000) }
+                    check("switching to a tab with 3,000 files takes under 110 ms [\(ms.map { "\($0) ms" } ?? "never")]",
+                          (ms ?? .max) <= 110)
+                    // The background refresh must still land.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        check("the big tab still lists all 3,000 files after the refresh", ex.tab.items.count == 3000)
+                        done()
+                    }
+                }
+            }
+        }
+        step(0.5) { ex.closeTab(ex.tabs.count - 1); try? fm.removeItem(at: root.appendingPathComponent("Big")) }
     }
 
     /// States worth eyeballing after a design change, in both themes.
@@ -179,6 +220,11 @@ enum UITest {
     // MARK: Step runner
 
     private static func step(_ delay: Double = 0.3, _ run: @escaping () -> Void) {
+        steps.append((delay, { done in run(); done() }))
+    }
+
+    /// A step that finishes when it calls `done`, for waiting on a condition.
+    private static func asyncStep(_ delay: Double = 0.3, _ run: @escaping (@escaping () -> Void) -> Void) {
         steps.append((delay, run))
     }
 
@@ -186,9 +232,21 @@ enum UITest {
         guard !steps.isEmpty else { return }
         let s = steps.removeFirst()
         DispatchQueue.main.asyncAfter(deadline: .now() + s.delay) {
-            s.run()
-            next()
+            s.run { next() }
         }
+    }
+
+    /// Polls until `condition` holds, then reports how long it took.
+    private static func waitUntil(timeout: Double = 1.5, _ condition: @escaping () -> Bool,
+                                  then report: @escaping (Double?) -> Void) {
+        let start = CACurrentMediaTime()
+        func poll() {
+            let elapsed = CACurrentMediaTime() - start
+            if condition() { report(elapsed); return }
+            if elapsed > timeout { report(nil); return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.005, execute: poll)
+        }
+        poll()
     }
 
     private static func check(_ name: String, _ condition: Bool) {

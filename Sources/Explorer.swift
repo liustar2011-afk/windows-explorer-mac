@@ -670,9 +670,41 @@ final class Explorer: ObservableObject {
         reload()
     }
 
-    func nextTab() { active = (active + 1) % tabs.count; reload() }
-    func prevTab() { active = (active - 1 + tabs.count) % tabs.count; reload() }
-    func selectTab(_ i: Int) { guard tabs.indices.contains(i) else { return }; active = i; reload() }
+    func nextTab() { switchTab(to: (active + 1) % tabs.count) }
+    func prevTab() { switchTab(to: (active - 1 + tabs.count) % tabs.count) }
+    func selectTab(_ i: Int) { guard tabs.indices.contains(i) else { return }; switchTab(to: i) }
+
+    /// A tab still holds what it listed last time. Show that at once and re-read
+    /// the folder off the main thread, so switching never waits on the disk.
+    private func switchTab(to i: Int) {
+        active = i
+        guard case .folder(let url) = tab.location, tab.search.isEmpty, !tab.items.isEmpty else {
+            reload(); return
+        }
+        scheduleJunkCleanup()
+        watchCurrentFolder()
+        let id = tab.id, showHidden = prefs.showHidden
+        DispatchQueue.global(qos: .userInitiated).async {
+            let items = Loader.contents(of: url, showHidden: showHidden)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let idx = self.tabs.firstIndex(where: { $0.id == id }),
+                      self.tabs[idx].location == .folder(url), self.tabs[idx].search.isEmpty else { return }
+                self.apply(items, toTab: idx)
+            }
+        }
+    }
+
+    /// Filters, sorts and installs freshly loaded items, keeping the selection
+    /// that still exists.
+    private func apply(_ loaded: [FileItem], toTab idx: Int) {
+        var items = loaded
+        if let f = filterKind { items = items.filter { matchesFilter($0, f) } }
+        var t = tabs[idx]
+        t.items = Loader.sort(items, by: prefs.sortKey, ascending: prefs.sortAscending)
+        let ids = Set(t.items.map(\.id))
+        t.selection = t.selection.filter { ids.contains($0) }
+        tabs[idx] = t
+    }
 
     // MARK: Selection
 

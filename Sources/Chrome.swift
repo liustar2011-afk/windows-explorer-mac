@@ -152,10 +152,14 @@ struct TabChip: View {
         }
         .padding(.bottom, active ? 0 : 3)
         .contentShape(shape)
+        .testAnchor("tab:\(title)")
         .help(title)
         .onHover { hovering = $0 }
-        .onTapGesture(count: 2, perform: onClose)
-        .onTapGesture(perform: onSelect)
+        // One handler, so the first click selects at once. Stacking a count-2
+        // gesture would hold every click back for the double-click interval.
+        .onTapGesture {
+            if (NSApp.currentEvent?.clickCount ?? 1) >= 2 { onClose() } else { onSelect() }
+        }
     }
 }
 
