@@ -632,18 +632,27 @@ struct RenameField: View {
     @ObservedObject private var interfaceSettings = Settings.shared
     @ObservedObject var ex: Explorer
     let item: FileItem
-    @State private var text: String = ""
+    @State private var text: String
+
+    init(ex: Explorer, item: FileItem) {
+        self.ex = ex
+        self.item = item
+        _text = State(initialValue: Prefs.shared.showExtensions ? item.name : item.displayName)
+    }
 
     var body: some View {
         WinField(text: $text, fontSize: 14,
                  selectStem: !item.isDirectory,
                  selectAll: item.isDirectory,
                  onCommit: { s in ex.commitRename(item, to: s) },
-                 onCancel: { ex.tab.editing = nil })
+                 onCancel: { ex.tab.editing = nil },
+                 // Enter and Esc clear `editing` first, so only a click-away commits here.
+                 onEndEditing: { s in
+                     if ex.tab.editing == item.id { ex.commitRename(item, to: s) }
+                 })
             .padding(.horizontal, 4)
             .background(WinRR(radius: 3).fill(Win.fieldFocus))
             .overlay(WinRR(radius: 3).stroke(Win.accent, lineWidth: 1))
-            .onAppear { text = Prefs.shared.showExtensions ? item.name : item.displayName }
     }
 }
 

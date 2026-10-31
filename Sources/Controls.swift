@@ -300,9 +300,11 @@ struct WinField: NSViewRepresentable {
     var onCommit: (String) -> Void = { _ in }
     var onCancel: () -> Void = {}
     var onTab: (() -> Void)? = nil
+    /// Called when the field loses focus without Enter or Esc, e.g. a click elsewhere.
+    var onEndEditing: ((String) -> Void)? = nil
 
     func makeNSView(context: Context) -> NSTextField {
-        let f = FocusField()
+        let f = NSTextField()
         f.delegate = context.coordinator
         f.isBordered = false
         f.drawsBackground = false
@@ -319,7 +321,8 @@ struct WinField: NSViewRepresentable {
             f.window?.makeFirstResponder(f)
             if let editor = f.currentEditor() {
                 if selectStem {
-                    let stem = (text as NSString).deletingPathExtension
+                    // Read the live value: `text` was captured before the binding was filled.
+                    let stem = (f.stringValue as NSString).deletingPathExtension
                     editor.selectedRange = NSRange(location: 0, length: max(stem.count, 0))
                 } else if selectAll {
                     editor.selectAll(nil)
@@ -347,6 +350,11 @@ struct WinField: NSViewRepresentable {
             parent.text = f.stringValue
         }
 
+        func controlTextDidEndEditing(_ obj: Notification) {
+            guard let f = obj.object as? NSTextField else { return }
+            parent.onEndEditing?(f.stringValue)
+        }
+
         func control(_ control: NSControl, textView: NSTextView,
                      doCommandBy selector: Selector) -> Bool {
             switch selector {
@@ -360,13 +368,6 @@ struct WinField: NSViewRepresentable {
             default:
                 return false
             }
-        }
-    }
-
-    /// Commits on focus loss, matching Explorer's inline rename.
-    final class FocusField: NSTextField {
-        override func textDidEndEditing(_ notification: Notification) {
-            super.textDidEndEditing(notification)
         }
     }
 }

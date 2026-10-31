@@ -901,6 +901,7 @@ final class Explorer: ObservableObject {
             reload()
             tab.selection = [url.path]
             tab.editing = url.path
+            tab.scrollTarget = url.path
         } catch { sheet = .error(error.localizedDescription) }
     }
 
