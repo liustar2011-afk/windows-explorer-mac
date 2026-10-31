@@ -346,7 +346,7 @@ final class Settings: ObservableObject {
         accentID = d.string(forKey: "accentID") ?? "blue"
         bindings = Settings.decode([String: [KeyChord]].self, d.data(forKey: "bindings")) ?? [:]
         folderStyles = Settings.decode([String: FolderStyle].self, d.data(forKey: "folderStyles")) ?? [:]
-        bidirectionalFinderFavorites = ProcessInfo.processInfo.environment["WINEXP_SELFTEST"] == nil && (d.object(forKey: "bidirectionalFinderFavorites") as? Bool ?? true)
+        bidirectionalFinderFavorites = ProcessInfo.processInfo.environment["WINEXP_SELFTEST"] == nil && ProcessInfo.processInfo.environment["WINEXP_UITEST"] == nil && (d.object(forKey: "bidirectionalFinderFavorites") as? Bool ?? true)
         syncFinderFavorites = d.object(forKey: "syncFinderFavorites") as? Bool ?? true
         pinned = d.stringArray(forKey: "pinned") ?? []
         hiddenPlaces = Set(d.stringArray(forKey: "hiddenPlaces") ?? [])

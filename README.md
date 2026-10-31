@@ -310,10 +310,12 @@ Sources/
   ContentView.swift    Root layout, flyout and dialog hosting
   App.swift            Window setup, key bindings, menu bar
   SelfTest.swift       End-to-end checks
+  UITest.swift         UI checks driven by synthetic clicks and keystrokes
 Tools/
   MakeIcon.swift       Draws the app icon, one render per icon-set size
   release.sh           Signs, notarizes and staples a release build
 build.sh               Compiles and assembles the .app bundle
+test.sh                Runs the self-test and the UI test
 ```
 
 Two decisions worth calling out:
@@ -325,10 +327,15 @@ Two decisions worth calling out:
 ## Tests
 
 ```bash
-WINEXP_SELFTEST=1 "build/File Explorer.app/Contents/MacOS/FileExplorer"
+./build.sh && ./test.sh
 ```
 
-Creates a scratch folder and drives the **real** key handler and file operations through copy, cut, paste, undo, rename, delete, restore, navigation, tabs, view modes, type-ahead, sorting, search, shortcut re-mapping, pinning, folder icons and right-click routing. **49 checks.**
+`test.sh` runs two suites against the built app; `./test.sh self` or `./test.sh ui` runs one.
+
+- **Self-test** (`WINEXP_SELFTEST=1`) creates a scratch folder and drives the **real** key handler and file operations through copy, cut, paste, undo, rename, delete, restore, navigation, tabs, view modes, type-ahead, sorting, search, shortcut re-mapping, pinning, folder icons and right-click routing.
+- **UI test** (`WINEXP_UITEST=1`) works the window the way a person would, with synthetic mouse and keyboard events going through the same event monitors, SwiftUI gestures and text fields: right-click > New for folders, text and rich text documents, checking that rename selects the name without its extension; committing a rename with Enter or by clicking away; F2 and Esc; click, Cmd-click and band selection; double-click to open. It finds file rows by the frames they register for hit-testing, and menu items through `.testAnchor(_:)` markers that exist only while the test runs. It takes about 30 seconds, and you can keep working in other apps meanwhile. `SHOTS=<dir> ./test.sh ui` also saves light and dark screenshots of the list, a selection and an open menu for reviewing design changes.
+
+Both suites use a separate preferences domain and skip Finder sync and automatic cleanup, so they never touch a real install's settings.
 
 Development helpers: `WINEXP_START=<path>` opens at a folder, `WINEXP_SNAPSHOT=<file.png>` writes a screenshot of the window, `WINEXP_SIZE=1400x900` opens at a given size, `WINEXP_TEST=menu:context|dialog:settings|dialog:about|dual|dual-home|rename|archive|compare|marquee|drop` opens a particular menu, dialog or layout for inspection, and `WINEXP_DEMO=<dir>` drives the scripted tour that produces the animation at the top of this page.
 

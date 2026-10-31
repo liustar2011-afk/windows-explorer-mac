@@ -441,6 +441,7 @@ final class Explorer: ObservableObject {
 
     private func scheduleJunkCleanup() {
         guard ProcessInfo.processInfo.environment["WINEXP_SELFTEST"] == nil,
+              ProcessInfo.processInfo.environment["WINEXP_UITEST"] == nil,
               ProcessInfo.processInfo.environment["WINEXP_DEMO"] == nil,
               ProcessInfo.processInfo.environment["WINEXP_SNAPSHOT"] == nil,
               prefs.autoCleanJunk, case .folder(let directory) = tab.location else {

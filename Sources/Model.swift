@@ -396,7 +396,7 @@ enum Loader {
 enum Store {
     static let defaults: UserDefaults = {
         let env = ProcessInfo.processInfo.environment
-        guard env["WINEXP_SELFTEST"] != nil || env["WINEXP_DEMO"] != nil || env["WINEXP_SNAPSHOT"] != nil || env["WINEXP_OPEN_REPORT"] != nil else {
+        guard env["WINEXP_SELFTEST"] != nil || env["WINEXP_UITEST"] != nil || env["WINEXP_DEMO"] != nil || env["WINEXP_SNAPSHOT"] != nil || env["WINEXP_OPEN_REPORT"] != nil else {
             return .standard
         }
         let suite = "com.winexplorer.mac.scratch"

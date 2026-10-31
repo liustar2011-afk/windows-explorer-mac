@@ -247,6 +247,7 @@ struct MenuRow: View {
                     .padding(.horizontal, 4)
             )
             .contentShape(Rectangle())
+            .testAnchor("menu:\(entry.title)")
             .onHover { h in
                 hovering = h
                 guard entry.submenu != nil else { return }

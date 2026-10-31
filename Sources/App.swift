@@ -107,7 +107,7 @@ final class AppState: NSObject, NSWindowDelegate {
 
         let model = WindowModel(start: location)
         state?.restore(into: model)
-        let hosting = NSHostingView(rootView: ContentView(model: model))
+        let hosting = ExplorerHostingView(rootView: ContentView(model: model))
         // Draw right up into the title bar area and never let content resize
         // the window (which used to push the details pane off screen).
         hosting.safeAreaRegions = []
@@ -150,6 +150,15 @@ final class ExplorerWindow: NSWindow {
     override var canBecomeMain: Bool { true }
 }
 
+/// macOS no longer lets an app pull itself to the front, and an inactive window
+/// swallows the first click. During the UI test the first click goes through, so
+/// its synthetic clicks land while you keep working in another app.
+final class ExplorerHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        TestAnchor.enabled || super.acceptsFirstMouse(for: event)
+    }
+}
+
 // MARK: - Delegate
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -177,7 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         FinderFavoritesSync.shared.start()
         if env["WINEXP_TEST"] == "drop" { DropHighlight.forceOn = true }
         let start: Location = env["WINEXP_START"].map { .folder(URL(fileURLWithPath: $0)) } ?? .home
-        if env["WINEXP_START"] != nil || env["WINEXP_SELFTEST"] != nil
+        if env["WINEXP_START"] != nil || env["WINEXP_SELFTEST"] != nil || env["WINEXP_UITEST"] != nil
             || env["WINEXP_DEMO"] != nil || env["WINEXP_SNAPSHOT"] != nil
             || env["WINEXP_OPEN_REPORT"] != nil || !AppState.shared.restoreSession() {
             AppState.shared.openNewWindow(at: start)
@@ -193,6 +202,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         if env["WINEXP_SELFTEST"] != nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { SelfTest.run() }
+        }
+        if env["WINEXP_UITEST"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { UITest.run() }
         }
         if let dir = env["WINEXP_DEMO"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { Demo.run(into: dir) }

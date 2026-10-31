@@ -58,7 +58,7 @@ final class FinderFavoritesSync {
     func start() {
         guard !started else { return }
         let env = ProcessInfo.processInfo.environment
-        guard env["WINEXP_SELFTEST"] == nil, env["WINEXP_DEMO"] == nil,
+        guard env["WINEXP_SELFTEST"] == nil, env["WINEXP_UITEST"] == nil, env["WINEXP_DEMO"] == nil,
               env["WINEXP_SNAPSHOT"] == nil, env["WINEXP_OPEN_REPORT"] == nil else { return }
         started = true
         watcher = DirectoryWatcher(url: FinderFavoritesReader.directory) { [weak self] in self?.refresh() }

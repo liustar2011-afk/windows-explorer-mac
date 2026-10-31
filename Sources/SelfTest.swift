@@ -772,7 +772,11 @@ enum SelfTest {
         Workspaces.delete(workspace)
         check("a workspace can be deleted", !Workspaces.all.contains { $0.name == "selftest" })
 
-        guard let window = NSApp.keyWindow else { return }
+        // Any of our windows will do; requiring the key window silently skipped
+        // these checks whenever another app was in front.
+        guard let window = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible }) else {
+            check("a window is available for session checks", false); return
+        }
         let sessionModel = WindowModel(start: .gallery)
         sessionModel.left.openTab(.folder(sub))
         if !sessionModel.dual { sessionModel.toggleDual() }
