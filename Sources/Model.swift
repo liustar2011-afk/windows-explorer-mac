@@ -21,7 +21,23 @@ struct FileItem: Identifiable, Hashable {
     let created: Date
     let ext: String
 
-    var id: String { url.path }
+    // Lists read every row ID when diffing, including off-screen rows.
+    let id: String
+
+    init(url: URL, name: String, isDirectory: Bool, isPackage: Bool, isHidden: Bool,
+         isSymlink: Bool, size: Int64, modified: Date, created: Date, ext: String) {
+        self.url = url
+        self.id = url.path
+        self.name = name
+        self.isDirectory = isDirectory
+        self.isPackage = isPackage
+        self.isHidden = isHidden
+        self.isSymlink = isSymlink
+        self.size = size
+        self.modified = modified
+        self.created = created
+        self.ext = ext
+    }
 
     static func == (a: FileItem, b: FileItem) -> Bool { a.url == b.url }
     func hash(into h: inout Hasher) { h.combine(url) }

@@ -356,14 +356,19 @@ struct DropHighlight: ViewModifier {
     var radius: CGFloat = 4
 
     func body(content: Content) -> some View {
+        let highlighted = active || DropHighlight.forceOn
         content
-            .background(WinRR(radius: radius).fill(Win.accent.opacity((active || DropHighlight.forceOn) ? 0.22 : 0)))
-            .overlay(
-                WinRR(radius: radius)
-                    .strokeBorder(Win.accent.opacity((active || DropHighlight.forceOn) ? 0.95 : 0), lineWidth: 1.5)
-                    .allowsHitTesting(false)
-            )
-            .scaleEffect((active || DropHighlight.forceOn) ? 1.012 : 1)
+            .background {
+                if highlighted { WinRR(radius: radius).fill(Win.accent.opacity(0.22)) }
+            }
+            .overlay {
+                if highlighted {
+                    WinRR(radius: radius)
+                        .strokeBorder(Win.accent.opacity(0.95), lineWidth: 1.5)
+                        .allowsHitTesting(false)
+                }
+            }
+            .scaleEffect(highlighted ? 1.012 : 1)
             .animation(.easeOut(duration: 0.15), value: active)
     }
 }
@@ -404,23 +409,28 @@ struct DetailsView: View {
     }
 
     private func content(columns: DetailColumns) -> some View {
-        VStack(spacing: 0) {
+        let items = ex.tab.items
+        let indexedItems = items.indices.lazy.map { (index: $0, item: items[$0]) }
+        return VStack(spacing: 0) {
             header(columns: columns)
             Divider().overlay(Win.divider)
             ScrollViewReader { proxy in
-                ScrollView(.vertical) {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(ex.tab.items.enumerated()), id: \.element.id) { index, item in
-                            DetailsRow(ex: ex, menus: menus, item: item,
-                                       height: rowHeight, columns: columns,
-                                       alternating: prefs.alternatingRowBackgrounds && index.isMultiple(of: 2) == false)
-                                .id(item.id)
-                        }
-                        Color.clear.frame(height: 40)
+                List {
+                    ForEach(indexedItems, id: \.item.id) { index, item in
+                        DetailsRow(ex: ex, menus: menus, item: item,
+                                   height: rowHeight, columns: columns,
+                                   alternating: prefs.alternatingRowBackgrounds && !index.isMultiple(of: 2))
+                            .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                     }
-                    .padding(.horizontal, 4)
-                    .padding(.top, 2)
+                    Color.clear.frame(height: 40)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 }
+                .listStyle(.plain)
+                .environment(\.defaultMinListRowHeight, rowHeight)
+                .scrollContentBackground(.hidden)
                 .marqueeZone(ex)
                 .onChange(of: ex.tab.scrollTarget) { _, target in
                     if let t = target { withAnimation(.linear(duration: 0.08)) { proxy.scrollTo(t, anchor: .center) } }
@@ -746,14 +756,15 @@ struct ListFlowView: View {
             let rowH = Win.scaled(22)
             let columnWidth = Win.scaled(220)
             let perColumn = max(1, Int((geo.size.height - 24) / rowH))
-            let columns = stride(from: 0, to: ex.tab.items.count, by: perColumn).map {
-                Array(ex.tab.items[$0..<min($0 + perColumn, ex.tab.items.count)])
-            }
+            let items = ex.tab.items
+            let columnCount = (items.count + perColumn - 1) / perColumn
             ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 0) {
-                    ForEach(Array(columns.enumerated()), id: \.offset) { _, col in
+                LazyHStack(alignment: .top, spacing: 0) {
+                    ForEach(0..<columnCount, id: \.self) { column in
+                        let start = column * perColumn
+                        let end = min(start + perColumn, items.count)
                         VStack(alignment: .leading, spacing: 0) {
-                            ForEach(col) { item in
+                            ForEach(items[start..<end]) { item in
                                 SmallRow(ex: ex, menus: menus, item: item, width: columnWidth, height: rowH)
                             }
                         }

@@ -190,7 +190,64 @@ enum UITest {
                 }
             }
         }
+        for mode in [ViewMode.details, .list] {
+            step { Prefs.shared.viewMode = mode }
+            asyncStep(0.5) { done in
+                let router = RightClickRouter.shared
+                let area = router.contentFrame(for: ex)
+                let frames = router.itemFrames(for: ex) ?? [:]
+                check("\(mode) lays out only a subset of the 3,000 files", !frames.isEmpty && frames.count < 3000)
+                guard let first = ex.tab.items.first, let last = ex.tab.items.last,
+                      let frame = frames[first.id],
+                      let marker = router.target(at: CGPoint(x: frame.midX, y: frame.midY), in: window),
+                      let scroll = marker.enclosingScrollView, let document = scroll.documentView else {
+                    check("found the \(mode) file scroll view", false)
+                    done()
+                    return
+                }
+                let end = mode == .list ? CGPoint(x: document.bounds.maxX, y: 0)
+                                        : CGPoint(x: 0, y: document.bounds.maxY)
+                func finishScroll() {
+                    document.scroll(end)
+                    waitUntil({
+                        router.itemFrames(for: ex)?[last.id]?.intersects(area) == true
+                    }) { elapsed in
+                        check("\(mode) displays the last file after scrolling to the end", elapsed != nil)
+                        done()
+                    }
+                }
+                if mode == .details && ProcessInfo.processInfo.environment["WINEXP_SCROLL_PROBE"] != nil {
+                    measureScroll(scroll, then: finishScroll)
+                } else {
+                    finishScroll()
+                }
+            }
+        }
+        step { Prefs.shared.viewMode = .details }
         step(0.5) { ex.closeTab(ex.tabs.count - 1); try? fm.removeItem(at: root.appendingPathComponent("Big")) }
+    }
+
+    /// Sample main-run-loop delivery while advancing one row per tick. The
+    /// interval includes the UI work between ticks, not hardware input latency.
+    private static func measureScroll(_ scroll: NSScrollView, then done: @escaping () -> Void) {
+        var previous = CACurrentMediaTime()
+        var intervals: [Double] = []
+        let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { timer in
+            let now = CACurrentMediaTime()
+            intervals.append((now - previous) * 1000)
+            previous = now
+            var point = scroll.contentView.bounds.origin
+            point.y += 34
+            scroll.documentView?.scroll(point)
+            if intervals.count == 240 {
+                timer.invalidate()
+                let sorted = intervals.sorted()
+                print(String(format: "  SCROLL  p50 %.1f ms, p95 %.1f ms, max %.1f ms, offset %.0f pt",
+                             sorted[120], sorted[228], sorted.last!, scroll.contentView.bounds.minY))
+                done()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     /// States worth eyeballing after a design change, in both themes.
