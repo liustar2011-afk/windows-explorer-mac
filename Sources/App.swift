@@ -150,15 +150,13 @@ final class ExplorerWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 
-    // QLPreviewPanelController is an informal protocol on NSObject, so these
-    // are not superclass overrides.
-    @objc func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
 
-    @objc func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
         QuickLookPreview.shared.begin(panel)
     }
 
-    @objc func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
         QuickLookPreview.shared.end(panel)
     }
 }
