@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Quartz
 
 // MARK: - Window registry
 
@@ -148,6 +149,34 @@ func clampToScreen(_ window: NSWindow) {
 final class ExplorerWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = QuickPreview.shared
+    }
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = nil
+    }
+}
+
+final class QuickPreview: NSObject, QLPreviewPanelDataSource {
+    static let shared = QuickPreview()
+    private var urls: [URL] = []
+
+    func toggle(_ items: [FileItem]) -> Bool {
+        guard let panel = QLPreviewPanel.shared() else { return false }
+        if panel.isVisible { panel.orderOut(nil); return true }
+        urls = items.map(\.url)
+        guard !urls.isEmpty else { return false }
+        panel.dataSource = self
+        panel.reloadData()
+        panel.makeKeyAndOrderFront(nil)
+        return true
+    }
+
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { urls.count }
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
+        urls[index] as NSURL
+    }
 }
 
 /// macOS no longer lets an app pull itself to the front, and an inactive window
@@ -312,6 +341,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func installKeyHandler() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible,
+               event.window is QLPreviewPanel {
+                if event.keyCode == 49 && event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
+                    QLPreviewPanel.shared().orderOut(nil)
+                    return nil
+                }
+                return event
+            }
             guard let self, let ex = AppState.shared.active else { return event }
             return Keys.handle(event, ex: ex, editingText: self.editingText) ? nil : event
         }
@@ -455,11 +492,8 @@ enum Keys {
         case 116: ex.moveSelection(by: -12, extend: shift); return true
         case 121: ex.moveSelection(by: 12, extend: shift); return true
         case 49:                                                        // Space
-            if let lead = ex.tab.lead, let item = ex.tab.items.first(where: { $0.id == lead }) {
-                ex.select(item, extend: false, toggle: true)
-                return true
-            }
-            return false
+            guard !ctrl && !alt && !shift else { return false }
+            return QuickPreview.shared.toggle(ex.selectedItems)
         default: break
         }
 

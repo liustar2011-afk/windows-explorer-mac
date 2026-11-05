@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Quartz
 
 /// Drives a real window with synthetic mouse and keyboard events, so each step
 /// travels through the same event monitors, SwiftUI gestures and text fields a
@@ -50,6 +51,7 @@ enum UITest {
         newItemCases()
         renameCases()
         selectionCases()
+        previewCases()
         openCases()
         if let dir = ProcessInfo.processInfo.environment["WINEXP_UITEST_SHOTS"] {
             screenshotCases(into: URL(fileURLWithPath: dir))
@@ -143,6 +145,19 @@ enum UITest {
             check("dragging a band selects the rows it crosses",
                   ex.tab.selection.contains(path("alpha.txt")) && ex.tab.selection.contains(path("beta.txt")))
         }
+    }
+
+    private static func previewCases() {
+        step { click(row("alpha.txt")) }
+        step { keyEvent(" ", code: 49) }
+        step(0.5) {
+            let panel = QLPreviewPanel.shared()
+            check("Space opens Quick Look for the selected file",
+                  panel?.isVisible == true && panel?.dataSource?.numberOfPreviewItems(in: panel) == 1
+                  && ex.tab.selection == [path("alpha.txt")])
+        }
+        step { keyEvent(" ", code: 49) }
+        step(0.3) { check("Space closes Quick Look", QLPreviewPanel.shared()?.isVisible == false) }
     }
 
     private static func openCases() {
