@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import QuickLookUI
 
 // MARK: - Window registry
 
@@ -143,10 +144,23 @@ func clampToScreen(_ window: NSWindow) {
     if f != window.frame { window.setFrame(f, display: true) }
 }
 
-/// Lets the borderless-looking window still take key/main status.
+/// Lets the borderless-looking window still take key/main status, and owns
+/// Quick Look so Space can open the system preview panel.
 final class ExplorerWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    // QLPreviewPanelController is an informal protocol on NSObject, so these
+    // are not superclass overrides.
+    @objc func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+
+    @objc func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        QuickLookPreview.shared.begin(panel)
+    }
+
+    @objc func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        QuickLookPreview.shared.end(panel)
+    }
 }
 
 // MARK: - Delegate
@@ -434,11 +448,18 @@ enum Keys {
         case 116: ex.moveSelection(by: -12, extend: shift); return true
         case 121: ex.moveSelection(by: 12, extend: shift); return true
         case 49:                                                        // Space
-            if let lead = ex.tab.lead, let item = ex.tab.items.first(where: { $0.id == lead }) {
-                ex.select(item, extend: false, toggle: true)
-                return true
+            // With item check boxes on, Space toggles the focused row like
+            // Windows. Otherwise it opens Finder-style Quick Look preview.
+            if Prefs.shared.itemCheckBoxes {
+                if let lead = ex.tab.lead,
+                   let item = ex.tab.items.first(where: { $0.id == lead }) {
+                    ex.select(item, extend: false, toggle: true)
+                    return true
+                }
+                return false
             }
-            return false
+            QuickLookPreview.shared.toggle(for: ex)
+            return true
         default: break
         }
 

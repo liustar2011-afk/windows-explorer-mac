@@ -43,6 +43,22 @@ enum SelfTest {
         send(ex, "a", ctrl: true, shift: true)
         check("Ctrl+Shift+A clears selection", ex.tab.selection.isEmpty)
 
+        // Space: Quick Look by default; checkbox toggle when item check boxes are on.
+        let checkBoxes = Prefs.shared.itemCheckBoxes
+        Prefs.shared.itemCheckBoxes = false
+        if let spaceTarget = ex.tab.items.first(where: { $0.name == "alpha.txt" }) {
+            ex.select(spaceTarget, extend: false, toggle: false)
+            sendCode(ex, 49)
+            check("Space keeps the selection when opening Quick Look",
+                  ex.tab.selection == Set([spaceTarget.id]))
+            sendCode(ex, 49) // toggle closed again so later tests stay clean
+            Prefs.shared.itemCheckBoxes = true
+            sendCode(ex, 49)
+            check("Space toggles the focused item when check boxes are on",
+                  ex.tab.selection.isEmpty)
+        }
+        Prefs.shared.itemCheckBoxes = checkBoxes
+
         // Copy / paste
         guard let alpha = ex.tab.items.first(where: { $0.name == "alpha.txt" }) else {
             print("FAIL: missing alpha.txt"); finish()

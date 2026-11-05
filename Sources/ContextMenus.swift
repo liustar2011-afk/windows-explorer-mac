@@ -22,6 +22,9 @@ enum ContextMenus {
         var entries: [MenuEntry] = []
 
         entries.append(MenuEntry(title: L("Open"), icon: .openWith, shortcut: "Enter") { ex.openSelection() })
+        entries.append(MenuEntry(title: L("Quick Look"), icon: .eye, shortcut: "Space") {
+            QuickLookPreview.shared.toggle(for: ex)
+        })
         if single, ExternalVolumes.canEject(sel[0].url) {
             entries.append(MenuEntry(title: L("Eject")) {
                 ExternalVolumes.eject(sel[0].url, explorer: ex)

@@ -287,6 +287,7 @@ enum Localization {
         "No shared files.": "暂无共享文件。",
         "No recent files.": "暂无最近使用的文件。打开文件后会显示在这里。",
         "Open": "打开",
+        "Quick Look": "快速查看",
         "Open file location": "打开文件所在位置",
         "Open in new tab": "在新标签页中打开",
         "Open in new window": "在新窗口中打开",

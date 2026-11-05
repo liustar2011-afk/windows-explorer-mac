@@ -643,6 +643,7 @@ final class Explorer: ObservableObject {
         }
         t.lead = item.id
         tab = t
+        QuickLookPreview.shared.selectionChanged(in: self)
     }
 
     /// Applies a rubber-band selection on top of whatever it started from.
@@ -651,14 +652,22 @@ final class Explorer: ObservableObject {
         if tab.selection != combined {
             onInteract?()
             tab.selection = combined
+            QuickLookPreview.shared.selectionChanged(in: self)
         }
     }
 
-    func selectAll() { tab.selection = Set(tab.items.map(\.id)) }
-    func selectNone() { tab.selection = [] }
+    func selectAll() {
+        tab.selection = Set(tab.items.map(\.id))
+        QuickLookPreview.shared.selectionChanged(in: self)
+    }
+    func selectNone() {
+        tab.selection = []
+        QuickLookPreview.shared.selectionChanged(in: self)
+    }
     func invertSelection() {
         let all = Set(tab.items.map(\.id))
         tab.selection = all.subtracting(tab.selection)
+        QuickLookPreview.shared.selectionChanged(in: self)
     }
 
     func moveSelection(by delta: Int, extend: Bool) {
