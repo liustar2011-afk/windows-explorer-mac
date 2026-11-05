@@ -129,6 +129,7 @@ Every shortcut works with **`Ctrl`** (as on Windows) *and* **`Cmd`** (as Mac mus
 | `Shift+Delete` | Delete permanently |
 | `Ctrl+Shift+N` | New folder |
 | `Enter` | Open |
+| `Space` | Quick Look preview |
 | `Alt+Enter` | Properties |
 
 </td><td valign="top">
@@ -253,6 +254,7 @@ Sources/
   Theme.swift          WinUI 3 colour system, metrics, type ramp
   Glyphs.swift         Fluent icon set: path mini-language and renderer
   FileIcons.swift      Folder and file-type artwork, Quick Look thumbnails
+  QuickLook.swift      Space-bar Quick Look preview panel
   Model.swift          FileItem, Windows metadata formatting, known folders
   Explorer.swift       Tabs, history, selection, clipboard, file ops, undo, search
   Settings.swift       Re-mappable shortcuts, theme, folder icons, pinning

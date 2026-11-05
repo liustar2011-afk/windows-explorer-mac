@@ -2,7 +2,7 @@ name: Build macOS DMG
 
 on:
   push:
-    branches: [main]
+    branches: [main, "cursor/**"]
     paths:
       - "Sources/**"
       - "Tools/**"
@@ -54,7 +54,23 @@ jobs:
         run: |
           TAG="custom-latest"
           ASSET="build/FileExplorer-macOS-arm64.dmg"
-          NOTES="Apple Silicon (arm64), macOS 14+. Custom build from main. Ad-hoc signed; macOS may require Open Anyway on first launch."
+          SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
+          NOTES="$(cat <<EOF
+          Apple Silicon (arm64), macOS 14+.
+
+          Built from \`$GITHUB_REF_NAME\` @ \`$SHORT_SHA\`.
+
+          ## Install
+          1. Open the DMG and drag **File Explorer** into **Applications**.
+          2. First launch: System Settings → Privacy & Security → **Open Anyway**, or:
+             \`\`\`bash
+             xattr -dr com.apple.quarantine "/Applications/File Explorer.app"
+             \`\`\`
+          3. Optional: Settings → Integration → **Replace Finder**.
+
+          Ad-hoc signed (not notarized).
+          EOF
+          )"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             git tag -f "$TAG" "$GITHUB_SHA"
