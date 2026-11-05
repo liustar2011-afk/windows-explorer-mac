@@ -37,6 +37,11 @@ enum Localization {
     }
 
     static let chinese: [String: String] = [
+        "Common locations": "常用位置",
+        "Project favorites": "项目收藏",
+        "Devices": "设备",
+        "All tabs": "全部标签页",
+        "Drag to resize; double-click to fit contents": "拖动调整列宽；双击适应内容",
         "Allow reading Finder favorites": "授权读取 Finder 收藏夹",
         "Select the Finder favorites file or its containing folder to allow read access.": "请选择 Finder 收藏文件或其所在目录，以授予读取权限。",
         "Allow read access": "授权读取",

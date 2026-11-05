@@ -307,6 +307,13 @@ struct ItemInteraction: ViewModifier {
     func body(content: Content) -> some View {
         content
             .dropHighlight(dropTargeted)
+            .overlay {
+                if ex.tab.keyboardFocus && ex.tab.lead == item.id,
+                   ex.tab.selection.contains(item.id), ex.tab.editing == nil {
+                    Rectangle().strokeBorder(Win.accent, lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+            }
             .contentShape(Rectangle())
             // Controls inside a row retain SwiftUI's normal click handling.
             .simultaneousGesture(TapGesture(count: 1).onEnded {
@@ -393,17 +400,16 @@ struct DetailsView: View {
     @ObservedObject var menus: MenuController
     @ObservedObject var prefs = Prefs.shared
 
-    @AppStorage("details.nameWidth", store: Store.defaults) private var nameWidth: Double = 420
+    @AppStorage("details.nameWidth", store: Store.defaults) private var nameWidth: Double = 0
     @AppStorage("details.dateWidth", store: Store.defaults) private var dateWidth: Double = 150
     @AppStorage("details.typeWidth", store: Store.defaults) private var typeWidth: Double = 140
     @AppStorage("details.sizeWidth", store: Store.defaults) private var sizeWidth: Double = 90
 
-    private var rowHeight: CGFloat { Win.scaled(prefs.compactMode ? 24 : 34) }
+    private var rowHeight: CGFloat { Win.scaled(prefs.compactMode ? 24 : 32) }
 
     var body: some View {
         GeometryReader { geo in
-            content(columns: DetailColumns(available: geo.size.width,
-                                           preferredName: nameWidth,
+            content(columns: DetailColumns(available: geo.size.width, preferredName: nameWidth,
                                            date: dateWidth, type: typeWidth, size: sizeWidth))
         }
     }
@@ -420,7 +426,7 @@ struct DetailsView: View {
                         DetailsRow(ex: ex, menus: menus, item: item,
                                    height: rowHeight, columns: columns,
                                    alternating: prefs.alternatingRowBackgrounds && !index.isMultiple(of: 2))
-                            .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
+                            .listRowInsets(EdgeInsets())
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                     }
@@ -429,6 +435,7 @@ struct DetailsView: View {
                         .listRowBackground(Color.clear)
                 }
                 .listStyle(.plain)
+                .contentMargins(.horizontal, 0, for: .scrollContent)
                 .environment(\.defaultMinListRowHeight, rowHeight)
                 .scrollContentBackground(.hidden)
                 .marqueeZone(ex)
@@ -442,23 +449,50 @@ struct DetailsView: View {
     private func header(columns: DetailColumns) -> some View {
         HStack(spacing: 0) {
             ColumnHeader(title: L("Name"), key: .name, width: $nameWidth,
-                         effective: columns.name, ex: ex, leading: 34)
+                         effective: columns.name, ex: ex, leading: 36,
+                         autoFit: { fitColumn(.name) })
             if columns.date != nil {
-                ColumnHeader(title: L("Date modified"), key: .modified, width: $dateWidth, ex: ex)
+                ColumnHeader(title: L("Date modified"), key: .modified, width: $dateWidth, ex: ex, leading: 6,
+                             autoFit: { fitColumn(.modified) })
             }
             if columns.type != nil {
-                ColumnHeader(title: L("Type"), key: .type, width: $typeWidth, ex: ex)
+                ColumnHeader(title: L("Type"), key: .type, width: $typeWidth, ex: ex, leading: 6,
+                             autoFit: { fitColumn(.type) })
             }
             if columns.size != nil {
-                ColumnHeader(title: L("Size"), key: .size, width: $sizeWidth, ex: ex, trailing: true)
+                ColumnHeader(title: L("Size"), key: .size, width: $sizeWidth, ex: ex, trailing: true,
+                             autoFit: { fitColumn(.size) })
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 4)
-        .frame(height: 30)
+        .padding(.horizontal, DetailColumns.padding / 2)
+        .frame(height: Win.scaled(30))
         .background(Win.listHeader)
         .coordinateSpace(name: "detailColumnHeader")
     }
+
+    private func fitColumn(_ key: SortKey) {
+        let font = key == .name ? Win.nsFont(.item) : Win.nsFont(.body)
+        let measured = ex.tab.items.reduce(CGFloat(0)) { longest, item in
+            let value: String
+            switch key {
+            case .name: value = item.displayName
+            case .modified: value = item.modifiedText
+            case .type: value = item.typeName
+            case .size: value = item.sizeText
+            case .created: preconditionFailure("Creation date has no detail column")
+            }
+            return max(longest, (value as NSString).size(withAttributes: [.font: font]).width)
+        }
+        switch key {
+        case .name: nameWidth = max(DetailColumns.minimumName, ceil(measured) + (prefs.itemCheckBoxes ? 74 : 54))
+        case .modified: dateWidth = max(150, ceil(measured) + 24)
+        case .type: typeWidth = max(80, ceil(measured) + 24)
+        case .size: sizeWidth = max(90, ceil(measured) + 24)
+        case .created: preconditionFailure("Creation date has no detail column")
+        }
+    }
+
 }
 
 struct ColumnHeader: View {
@@ -471,31 +505,28 @@ struct ColumnHeader: View {
     @ObservedObject var ex: Explorer
     var leading: CGFloat = 10
     var trailing: Bool = false
+    var autoFit: () -> Void = {}
     @State private var hovering = false
     @State private var dragStartWidth: Double?
     @ObservedObject private var prefs = Prefs.shared
 
     var body: some View {
         HStack(spacing: 0) {
-            ZStack(alignment: .top) {
-                HStack(spacing: 0) {
-                    if trailing { Spacer(minLength: 0) }
-                    Text(title)
-                        .font(Win.font(.secondary, weight: .medium))
-                        .foregroundStyle(Win.textSecondary)
-                        .lineLimit(1)
-                    if !trailing { Spacer(minLength: 0) }
-                }
-                .padding(.leading, trailing ? 6 : leading)
-                .padding(.trailing, trailing ? 10 : 6)
-
+            HStack(spacing: 5) {
+                if trailing { Spacer(minLength: 0) }
+                Text(title)
+                    .font(Win.font(.secondary, weight: .medium))
+                    .foregroundStyle(Win.textSecondary)
+                    .lineLimit(1)
                 if prefs.sortKey == key {
                     Glyph(icon: prefs.sortAscending ? .sortAsc : .sortDesc,
                           size: 10, color: Win.accent)
-                        .offset(y: -3)
                 }
+                if !trailing { Spacer(minLength: 0) }
             }
-            .frame(width: effective ?? width, height: 26)
+            .padding(.leading, trailing ? 6 : leading)
+            .padding(.trailing, trailing ? 4 : 6)
+            .frame(width: (effective ?? width) - 6, height: Win.scaled(26))
             .background(WinRR(radius: 4).fill(hovering ? Win.subtleHover : .clear))
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
@@ -518,6 +549,9 @@ struct ColumnHeader: View {
                                     dragStartWidth! + Double(g.translation.width))
                     }
                     .onEnded { _ in dragStartWidth = nil })
+                .onTapGesture(count: 2, perform: autoFit)
+                .help(L("Drag to resize; double-click to fit contents"))
+                .testAnchor("column.resize.\(key.rawValue)")
         }
     }
 }
@@ -527,7 +561,8 @@ struct ColumnHeader: View {
 /// layout sideways. Date survives longest after Name, then Size, then Type.
 struct DetailColumns: Equatable {
     static let minimumName: CGFloat = 120
-    static let padding: CGFloat = 26
+    static let padding: CGFloat = 16
+    static let automaticNameLimit: CGFloat = 560
 
     var name: CGFloat
     var date: CGFloat? = nil
@@ -536,7 +571,7 @@ struct DetailColumns: Equatable {
 
     init(name: CGFloat) { self.name = name }
 
-    init(available: CGFloat, preferredName: CGFloat,
+    init(available: CGFloat, preferredName: CGFloat = 0,
          date dateWidth: CGFloat, type typeWidth: CGFloat, size sizeWidth: CGFloat) {
         var remaining = available - DetailColumns.padding
         name = DetailColumns.minimumName
@@ -549,7 +584,8 @@ struct DetailColumns: Equatable {
         if remaining >= DetailColumns.minimumName + typeWidth {
             type = typeWidth; remaining -= typeWidth
         }
-        name = max(DetailColumns.minimumName, min(preferredName, remaining))
+        let desired = preferredName > 0 ? preferredName : DetailColumns.automaticNameLimit
+        name = max(DetailColumns.minimumName, min(desired, remaining))
     }
 
     /// Everything the row will actually lay out, padding included.
@@ -567,6 +603,9 @@ struct DetailsRow: View {
     let columns: DetailColumns
     var alternating = false
     @ObservedObject private var prefs = Prefs.shared
+
+    @ObservedObject private var fileHover = FileHover.shared
+    private var hovering: Bool { fileHover.isHovered(item.id, in: ex) }
 
     private var selected: Bool { ex.tab.selection.contains(item.id) }
     private var highlighted: Bool { selected }
@@ -624,11 +663,18 @@ struct DetailsRow: View {
 
             Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity)
         .frame(height: height)
         .background(
             Rectangle().fill(
-                highlighted ? Win.currentRow : (alternating ? Win.alternatingRow : .clear))
+                highlighted ? Win.currentRow : (hovering ? Win.fileRowHover : (alternating ? Win.alternatingRow : .clear)))
         )
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Win.fileRowSeparator)
+                .frame(height: 0.5)
+                .allowsHitTesting(false)
+        }
         .itemInteraction(ex, menus, item)
     }
 }
@@ -730,7 +776,7 @@ struct IconCell: View {
         .frame(width: cell.width, height: cell.height)
         .background(
             WinRR(radius: 8).fill(
-                highlighted ? Win.currentRow : .clear)
+                highlighted ? Win.currentRow : (hovering ? Win.fileRowHover : .clear))
         )
         .overlay(alignment: .topLeading) {
             if prefs.itemCheckBoxes && (hovering || selected) {
@@ -785,6 +831,9 @@ struct SmallRow: View {
     let item: FileItem
     let width: CGFloat
     let height: CGFloat
+    @ObservedObject private var fileHover = FileHover.shared
+    private var hovering: Bool { fileHover.isHovered(item.id, in: ex) }
+
     private var selected: Bool { ex.tab.selection.contains(item.id) }
     private var highlighted: Bool { selected }
 
@@ -802,7 +851,7 @@ struct SmallRow: View {
         }
         .padding(.horizontal, 6)
         .frame(width: width, height: height)
-        .background(WinRR(radius: 8).fill(highlighted ? Win.currentRow : .clear))
+        .background(WinRR(radius: 8).fill(highlighted ? Win.currentRow : (hovering ? Win.fileRowHover : .clear)))
         .itemInteraction(ex, menus, item)
     }
 }
@@ -844,6 +893,9 @@ struct TileCell: View {
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     let item: FileItem
+    @ObservedObject private var fileHover = FileHover.shared
+    private var hovering: Bool { fileHover.isHovered(item.id, in: ex) }
+
     private var selected: Bool { ex.tab.selection.contains(item.id) }
     private var highlighted: Bool { selected }
 
@@ -865,7 +917,7 @@ struct TileCell: View {
         }
         .padding(8)
         .frame(height: Win.scaled(72))
-        .background(WinRR(radius: 8).fill(highlighted ? Win.currentRow : .clear))
+        .background(WinRR(radius: 8).fill(highlighted ? Win.currentRow : (hovering ? Win.fileRowHover : .clear)))
         .itemInteraction(ex, menus, item)
     }
 }
@@ -875,6 +927,9 @@ struct ContentRow: View {
     @ObservedObject var ex: Explorer
     @ObservedObject var menus: MenuController
     let item: FileItem
+    @ObservedObject private var fileHover = FileHover.shared
+    private var hovering: Bool { fileHover.isHovered(item.id, in: ex) }
+
     private var selected: Bool { ex.tab.selection.contains(item.id) }
     private var highlighted: Bool { selected }
 
@@ -894,7 +949,7 @@ struct ContentRow: View {
         }
         .padding(.horizontal, 10)
         .frame(height: Win.scaled(56))
-        .background(WinRR(radius: 8).fill(highlighted ? Win.currentRow : .clear))
+        .background(WinRR(radius: 8).fill(highlighted ? Win.currentRow : (hovering ? Win.fileRowHover : .clear)))
         .itemInteraction(ex, menus, item)
     }
 }

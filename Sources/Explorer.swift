@@ -46,6 +46,16 @@ enum Location: Hashable {
         }
     }
 
+    /// Distinguish identically named tabs without changing their short titles.
+    var pathDescription: String {
+        switch self {
+        case .folder(let url): return url.path
+        case .archive(let archive, let inner):
+            return inner.isEmpty ? archive.path : archive.path + "/" + inner
+        default: return displayTitle
+        }
+    }
+
     var icon: Icon {
         switch self {
         case .home: return .home
@@ -102,6 +112,7 @@ struct TabState: Identifiable {
     var selection: Set<String> = []
     var anchor: String? = nil
     var lead: String? = nil
+    var keyboardFocus = false
     var search: String = ""
     var searching: Bool = false
     var editing: String? = nil
@@ -728,6 +739,7 @@ final class Explorer: ObservableObject {
             t.selection = [item.id]
             t.anchor = item.id
         }
+        t.keyboardFocus = false
         t.lead = item.id
         tab = t
     }
@@ -755,17 +767,18 @@ final class Explorer: ObservableObject {
         let item = tab.items[next]
         if extend { select(item, extend: true, toggle: false) }
         else { select(item, extend: false, toggle: false) }
+        tab.keyboardFocus = true
         tab.scrollTarget = item.id
     }
 
     func selectFirst() {
         guard let f = tab.items.first else { return }
-        select(f, extend: false, toggle: false); tab.scrollTarget = f.id
+        select(f, extend: false, toggle: false); tab.keyboardFocus = true; tab.scrollTarget = f.id
     }
 
     func selectLast() {
         guard let l = tab.items.last else { return }
-        select(l, extend: false, toggle: false); tab.scrollTarget = l.id
+        select(l, extend: false, toggle: false); tab.keyboardFocus = true; tab.scrollTarget = l.id
     }
 
     /// Type-ahead: jump to the next item starting with the typed prefix.

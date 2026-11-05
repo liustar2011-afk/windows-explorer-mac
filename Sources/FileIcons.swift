@@ -25,8 +25,8 @@ struct FolderIcon: View {
             tab.addLine(to: CGPoint(x: 0, y: tabBottom))
             tab.closeSubpath()
             ctx.fill(tab, with: .linearGradient(
-                Gradient(colors: [Color(red: 0.91, green: 0.66, blue: 0.05),
-                                  Color(red: 0.84, green: 0.58, blue: 0.0)]),
+                Gradient(colors: [Color(red: 0.84, green: 0.63, blue: 0.18),
+                                  Color(red: 0.77, green: 0.53, blue: 0.12)]),
                 startPoint: CGPoint(x: 0, y: tabTop), endPoint: CGPoint(x: 0, y: tabBottom)))
 
             // Front panel
@@ -34,8 +34,8 @@ struct FolderIcon: View {
             let body = Path(roundedRect: CGRect(x: 0, y: bodyTop, width: w, height: h - bodyTop - h * 0.09),
                             cornerRadius: r, style: .continuous)
             ctx.fill(body, with: .linearGradient(
-                Gradient(colors: [Color(red: 1.0, green: 0.88, blue: 0.50),
-                                  Color(red: 1.0, green: 0.78, blue: 0.24)]),
+                Gradient(colors: [Color(red: 0.98, green: 0.86, blue: 0.54),
+                                  Color(red: 0.94, green: 0.74, blue: 0.32)]),
                 startPoint: CGPoint(x: w * 0.2, y: bodyTop),
                 endPoint: CGPoint(x: w * 0.9, y: h)))
         }
@@ -109,6 +109,16 @@ struct FileSheetIcon: View {
         }
     }
 
+    private var smallBadge: String {
+        switch kind {
+        case .word: return "W"
+        case .excel: return "X"
+        case .powerpoint: return "P"
+        case .pdf: return "P"
+        default: return ""
+        }
+    }
+
     var body: some View {
         let s = size
         ZStack {
@@ -150,7 +160,7 @@ struct FileSheetIcon: View {
                         cornerRadius: w * 0.035, style: .continuous)
                     ctx.fill(band, with: .color(accent))
                 } else {
-                    let band = Path(CGRect(x: px, y: h * 0.62, width: pw, height: h * 0.20))
+                    let band = Path(CGRect(x: px, y: h * 0.54, width: pw, height: h * 0.32))
                     ctx.fill(band, with: .color(accent))
                 }
             }
@@ -159,6 +169,11 @@ struct FileSheetIcon: View {
                     .font(.system(size: s * 0.155, weight: .bold))
                     .foregroundStyle(.white)
                     .offset(x: -s * 0.03, y: s * 0.19)
+            } else if !smallBadge.isEmpty {
+                Text(smallBadge)
+                    .font(.system(size: s * 0.27, weight: .bold))
+                    .foregroundStyle(.white)
+                    .offset(y: s * 0.20)
             }
         }
         .frame(width: s, height: s)

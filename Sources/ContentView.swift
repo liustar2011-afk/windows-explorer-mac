@@ -37,7 +37,8 @@ struct ContentView: View {
                         }
                         panes()
                             .clipShape(WinRR(radius: 10))
-                            .overlay(WinRR(radius: 10).strokeBorder(Win.cardStroke, lineWidth: 1))
+                            .overlay(WinRR(radius: 10).strokeBorder(Win.cardStroke, lineWidth: 1)
+                                .allowsHitTesting(false))
                             .shadow(color: Win.surfaceShadow, radius: 3, x: 0, y: 1)
                             .padding(8)
                             .background(Win.workspace)

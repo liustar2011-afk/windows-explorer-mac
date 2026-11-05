@@ -33,38 +33,42 @@ enum Win {
     // for the accent. Three tiers: tab strip, workspace, then toolbar and card.
 
     /// Tab strip behind the caption buttons, tinted like a Chrome frame.
-    static let tabStrip     = dyn(c(0x1B1A1A), c(0xEFE3DB))
+    static let tabStrip     = dyn(c(0x1B1A1A), c(0xE8E3DD))
     /// Active tab, address row and command bar share one colour, as in Chrome.
-    static let tabActive    = dyn(c(0x2E2C2B), c(0xFDFAF8))
+    static let tabActive    = dyn(c(0x2E2C2B), c(0xF3F0EC))
     static let tabHover     = dyn(c(0xFFFFFF, 0.06), c(0xFFFFFF, 0.50))
-    static let tabSeparator = dyn(c(0xFFFFFF, 0.14), c(0x5A4034, 0.22))
-    static let chrome       = dyn(c(0x2E2C2B), c(0xFDFAF8))
-    static let commandBar   = dyn(c(0x2E2C2B), c(0xFDFAF8))
-    static let listHeader   = dyn(c(0x1D1D20), c(0xFFFFFF))
-    static let sidebar      = dyn(c(0x19191B), c(0xF3F2EF))
-    static let workspace    = dyn(c(0x19191B), c(0xF3F2EF))
-    static let surfaceShadow = dyn(c(0x000000, 0.40), c(0x3A3428, 0.07))
-    static let content      = dyn(c(0x1D1D20), c(0xFFFFFF))
-    static let statusBar    = dyn(c(0x19191B), c(0xF3F2EF))
-    static let flyout       = dyn(c(0x2A2A2D), c(0xFDFDFC))
-    static let dialog       = dyn(c(0x262629), c(0xFDFDFC))
+    static let tabSeparator = dyn(c(0xFFFFFF, 0.14), c(0x625E59, 0.16))
+    static let chrome       = dyn(c(0x2E2C2B), c(0xF3F0EC))
+    static let commandBar   = dyn(c(0x2E2C2B), c(0xF3F0EC))
+    static let listHeader   = dyn(c(0x1D1D20), c(0xFDFCF9))
+    static let sidebar      = dyn(c(0x19191B), c(0xEEEAE5))
+    static let workspace    = dyn(c(0x19191B), c(0xEEEAE5))
+    static let surfaceShadow = dyn(c(0x000000, 0.40), c(0x3A3428, 0.04))
+    static let content      = dyn(c(0x1D1D20), c(0xFDFCF9))
+    static let statusBar    = dyn(c(0x19191B), c(0xEEEAE5))
+    static let flyout       = dyn(c(0x2A2A2D), c(0xFDFCF9))
+    static let menuShadow = dyn(c(0x000000, 0.30), c(0x3A3428, 0.14))
+    static let dialog       = dyn(c(0x262629), c(0xFDFCF9))
 
     // MARK: - Controls
 
     /// Address bar / search box: borderless wells; a stroke appears only on focus.
     static let field        = dyn(c(0xFFFFFF, 0.06), c(0x000000, 0.04))
     static let fieldHover   = dyn(c(0xFFFFFF, 0.09), c(0x000000, 0.06))
-    static let fieldFocus   = dyn(c(0x18181A), c(0xFFFFFF))
+    static let fieldFocus   = dyn(c(0x18181A), c(0xFDFCF9))
     static let controlFill  = dyn(c(0xFFFFFF, 0.06), c(0xFFFFFF, 0.70))
 
     /// Subtle button states (toolbar buttons, list rows).
     static let subtleHover  = dyn(c(0xFFFFFF, 0.055), c(0x000000, 0.04))
     static let subtlePress  = dyn(c(0xFFFFFF, 0.04), c(0x000000, 0.03))
     static let alternatingRow = dyn(c(0xFFFFFF, 0.018), c(0x000000, 0.018))
+    /// Warm, visible row boundaries for scanning across wide detail columns.
+    static let fileRowSeparator = dyn(c(0xFFFFFF, 0.13), c(0xDCD7D0))
     /// Selection is a soft accent wash; text keeps its own colour.
     static var currentRow: Color { accent.opacity(isDark ? 0.26 : 0.14) }
-    static let selectionText = dyn(c(0xF4F4F5), c(0x17191C))
-    static let fileRowHover = dyn(c(0xFFFFFF, 0.045), c(0x000000, 0.03))
+    static let selectionText = dyn(c(0xF4F4F5), c(0x292725))
+    /// ComfortFiles-style pointer highlight, distinct from the selected row.
+    static let fileRowHover = dyn(c(0x253847), c(0xEAF2F8))
     static var selected: Color { accent.opacity(isDark ? 0.18 : 0.10) }
     static var selectedHover: Color { accent.opacity(isDark ? 0.24 : 0.16) }
     /// Sidebar selection stays neutral; the accent marker carries the colour.
@@ -79,9 +83,9 @@ enum Win {
 
     // MARK: - Text
 
-    static let text         = dyn(c(0xECECEE), c(0x1F2124))
-    static let textSecondary = dyn(c(0xA9AAB0), c(0x5E6066))
-    static let fileMetadata = dyn(c(0x8E9096), c(0x7B7D83))
+    static let text         = dyn(c(0xECECEE), c(0x292725))
+    static let textSecondary = dyn(c(0xA9AAB0), c(0x625E59))
+    static let fileMetadata = dyn(c(0xB1B3BA), c(0x625E59))
     static let textTertiary = dyn(c(0xFFFFFF, 0.50), c(0x000000, 0.45))
     static let textDisabled = dyn(c(0xFFFFFF, 0.32), c(0x000000, 0.30))
     static let textOnAccent = dyn(c(0x000000), c(0xFFFFFF))
@@ -112,8 +116,8 @@ enum Win {
 
     enum M {
         static let tabStripHeight: CGFloat = 40
-        static let navBarHeight: CGFloat = 48
-        static let commandBarHeight: CGFloat = 48
+        static var navBarHeight: CGFloat { Win.scaled(40) }
+        static var commandBarHeight: CGFloat { Win.scaled(40) }
         static let statusBarHeight: CGFloat = 26
         static let sidebarWidth: CGFloat = 190
         static let rowHeight: CGFloat = 24

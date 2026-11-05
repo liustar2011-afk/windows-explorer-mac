@@ -74,7 +74,8 @@ enum ContextMenus {
             guard let dir = ex.currentDirectory else { return }
             Ops.makeShortcut(for: sel.map(\.url), in: dir); ex.reload()
         })
-        entries.append(MenuEntry(title: L("Delete permanently"), icon: .delete, shortcut: Settings.shared.display(for: .deletePermanent)) {
+        entries.append(.sep())
+        entries.append(MenuEntry(title: L("Delete permanently"), icon: .delete, shortcut: Settings.shared.display(for: .deletePermanent), destructive: true) {
             ex.deleteSelection(permanent: true)
         })
         entries.append(.sep())

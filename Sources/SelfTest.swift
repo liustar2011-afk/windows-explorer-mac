@@ -196,6 +196,19 @@ enum SelfTest {
 
         checkPanes(root: root, sub: sub)
         checkColumnFitting()
+        if let first = ex.tab.items.first {
+            ex.select(first, extend: false, toggle: false)
+            ex.moveSelection(by: 1, extend: true)
+            check("keyboard navigation marks the focus row", ex.tab.keyboardFocus && ex.tab.lead != nil)
+            ex.select(first, extend: false, toggle: false)
+            check("pointer selection clears keyboard focus styling", !ex.tab.keyboardFocus)
+            let entries = ContextMenus.item(ex)
+            if let index = entries.firstIndex(where: { $0.destructive }) {
+                check("permanent delete is isolated from ordinary menu commands",
+                      entries[index].title == L("Delete permanently") && index > 0 && entries[index - 1].separator
+                      && index + 1 < entries.count && entries[index + 1].separator)
+            } else { check("permanent delete has danger semantics", false) }
+        }
         checkMarquee(ex: ex, root: root)
         checkFinderFavorites(root: root)
         checkJunkCleanup(root: root)
@@ -615,7 +628,7 @@ enum SelfTest {
         var detailsFit = true
         var recentFit = true
         for width in stride(from: 140.0, through: 1600.0, by: 20.0) {
-            let details = DetailColumns(available: CGFloat(width), preferredName: 300,
+            let details = DetailColumns(available: CGFloat(width),
                                         date: 150, type: 140, size: 90)
             if details.totalWidth > CGFloat(width) + 0.5, width >= 200 { detailsFit = false }
             let recent = RecentColumns(available: CGFloat(width))
@@ -624,13 +637,27 @@ enum SelfTest {
         check("Details columns always fit the pane they are drawn in", detailsFit)
         check("the Recent list always fits the pane it is drawn in", recentFit)
 
-        let narrow = DetailColumns(available: 300, preferredName: 300,
+        let narrow = DetailColumns(available: 300,
                                    date: 150, type: 140, size: 90)
         check("a narrow pane keeps Name and Date", narrow.date != nil && narrow.type == nil)
-        let wide = DetailColumns(available: 1200, preferredName: 300,
+        let wide = DetailColumns(available: 1200,
                                  date: 150, type: 140, size: 90)
-        check("a wide pane shows every column",
-              wide.date != nil && wide.type != nil && wide.size != nil && wide.name == 300)
+        check("a wide pane shows every column without stretching Name beyond its readable limit",
+              wide.date != nil && wide.type != nil && wide.size != nil && wide.name == 560)
+        let resized = DetailColumns(available: 850, date: 210, type: 140, size: 90)
+        check("resizing metadata gives space back to Name without overflowing",
+              resized.name == 394 && resized.totalWidth == 850)
+        let manual = DetailColumns(available: 1200, preferredName: 680, date: 150, type: 140, size: 90)
+        check("manual name width can exceed the automatic limit", manual.name == 680)
+        let clamped = DetailColumns(available: 600, preferredName: 680, date: 150, type: 140, size: 90)
+        check("manual name width shrinks to fit narrow panes", clamped.totalWidth == 600)
+        check("few tabs keep their readable width", TabChip.width(available: 1000, count: 3) == 220)
+        check("eight tabs share available space", TabChip.width(available: 1280, count: 8) == 160)
+        check("many tabs retain a readable minimum", TabChip.width(available: 1000, count: 15) == 140)
+        let first = Location.folder(URL(fileURLWithPath: "/first/project"))
+        let second = Location.folder(URL(fileURLWithPath: "/second/project"))
+        check("same-name tabs expose distinct full paths",
+              first.displayTitle == second.displayTitle && first.pathDescription != second.pathDescription)
     }
 
     /// The band selects what it crosses, leaves items alone when it starts on

@@ -12,15 +12,17 @@ struct TitleBar: View {
     var body: some View {
         GeometryReader { geometry in
             // Bound the strip to the window so tab count cannot widen the page.
-            let tabWidth = max(0, min(CGFloat(ex.tabs.count) * TabChip.width + 2 * TabChip.flare,
-                                      geometry.size.width - 138 - 40 - 40))
+            let available = max(0, geometry.size.width - 138 - 40 - 40 - 40)
+            let chipWidth = TabChip.width(available: available - 2 * TabChip.flare, count: ex.tabs.count)
+            let tabWidth = min(available, CGFloat(ex.tabs.count) * chipWidth + 2 * TabChip.flare)
             HStack(spacing: 0) {
                 if interfaceSettings.windowButtonsOnLeft { captionButtons }
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(alignment: .bottom, spacing: 0) {
                             ForEach(Array(ex.tabs.enumerated()), id: \.element.id) { idx, t in
-                                TabChip(title: t.location.displayTitle, icon: t.location.icon,
+                                TabChip(title: t.location.displayTitle, path: t.location.pathDescription,
+                                        width: chipWidth, icon: t.location.icon,
                                         active: idx == ex.active,
                                         separatorBefore: idx > 0 && idx != ex.active && idx - 1 != ex.active,
                                         showClose: ex.tabs.count > 1 || idx == ex.active,
@@ -49,6 +51,28 @@ struct TitleBar: View {
                     Glyph(icon: .plus, size: 12, color: Win.text, weight: 1.4)
                 }
                 .frame(width: 40)
+
+                Menu {
+                    ForEach(Array(ex.tabs.enumerated()), id: \.element.id) { index, tab in
+                        Button {
+                            ex.selectTab(index)
+                        } label: {
+                            Text("\(index == ex.active ? "✓  " : "")\(tab.location.displayTitle)  —  \(tab.location.pathDescription)")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Win.textSecondary)
+                        .frame(width: 28, height: 28)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .frame(width: 40)
+                .help(L("All tabs"))
+                .accessibilityLabel(L("All tabs"))
+                .testAnchor("tabs.all")
 
                 WindowDragArea()
                     .frame(minWidth: 40, maxWidth: .infinity, maxHeight: .infinity)
@@ -118,11 +142,15 @@ struct ChromeTabShape: Shape {
 }
 
 struct TabChip: View {
-    static let width: CGFloat = 220
+    static func width(available: CGFloat, count: Int) -> CGFloat {
+        min(220, max(140, available / CGFloat(max(1, count))))
+    }
     static let flare: CGFloat = 8
 
     @ObservedObject private var interfaceSettings = Settings.shared
     let title: String
+    let path: String
+    let width: CGFloat
     let icon: Icon
     let active: Bool
     /// Chrome draws a short divider between two inactive tabs.
@@ -154,7 +182,7 @@ struct TabChip: View {
         }
         .padding(.leading, 12)
         .padding(.trailing, 8)
-        .frame(width: Self.width, height: 34, alignment: .leading)
+        .frame(width: width, height: 34, alignment: .leading)
         .background {
             if active {
                 ChromeTabShape().fill(Win.tabActive)
@@ -169,7 +197,7 @@ struct TabChip: View {
         }
         .contentShape(Rectangle())
         .testAnchor("tab:\(title)")
-        .help(title)
+        .help(path)
         .onHover { hovering = $0 }
         // One handler, so the first click selects at once. Stacking a count-2
         // gesture would hold every click back for the double-click interval.

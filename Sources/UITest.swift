@@ -48,6 +48,7 @@ enum UITest {
         Prefs.shared.viewMode = .details
         ex.go(to: root)
 
+        columnCases()
         newItemCases()
         renameCases()
         selectionCases()
@@ -65,6 +66,32 @@ enum UITest {
     }
 
     // MARK: Cases
+
+    private static func columnCases() {
+        step { Store.defaults.set(400.0, forKey: "details.nameWidth") }
+        step { doubleClick(anchor("column.resize.Name")) }
+        step {
+            let width = Store.defaults.double(forKey: "details.nameWidth")
+            check("double-clicking the name divider fits contents", width >= 120 && width < 400)
+        }
+        var initial: Double = 0
+        var start: CGPoint?
+        step {
+            initial = Store.defaults.double(forKey: "details.nameWidth")
+            start = anchor("column.resize.Name")
+            if let start { mouse(.leftMouseDown, at: start) }
+        }
+        step {
+            if let start { mouse(.leftMouseDragged, at: CGPoint(x: start.x + 80, y: start.y)) }
+        }
+        step {
+            if let start { mouse(.leftMouseUp, at: CGPoint(x: start.x + 80, y: start.y)) }
+        }
+        step {
+            check("dragging the name divider changes its saved width",
+                  Store.defaults.double(forKey: "details.nameWidth") > initial + 50)
+        }
+    }
 
     /// Right-click > New > each item: the file appears, rename starts with the
     /// right part selected, and typing a name plus Enter renames it.
@@ -286,7 +313,26 @@ enum UITest {
             step { key(.escape) }
             step { click(emptySpace()) }
         }
-        step { NSApp.appearance = Settings.shared.theme.appearance }
+        step {
+            NSApp.appearance = NSAppearance(named: .aqua)
+            window?.setContentSize(NSSize(width: 1512, height: 850))
+            for _ in 0..<11 { ex.openTab(.folder(root)) }
+            ex.selectTab(0)
+        }
+        step(0.6) { snapshot(dir.appendingPathComponent("wide-many-tabs.png")) }
+        step { rightClick(row("alpha.txt")) }
+        step(0.4) { snapshot(dir.appendingPathComponent("item-menu.png")) }
+        step { key(.escape); click(row("alpha.txt")); keyEvent(String(Character(UnicodeScalar(NSDownArrowFunctionKey)!)), code: 125) }
+        step(0.4) { snapshot(dir.appendingPathComponent("keyboard-focus.png")) }
+        step {
+            Settings.shared.textSize = .extraLarge
+            window?.setContentSize(NSSize(width: 900, height: 640))
+        }
+        step(0.6) { snapshot(dir.appendingPathComponent("narrow-large-text.png")) }
+        step {
+            Settings.shared.textSize = .standard
+            NSApp.appearance = Settings.shared.theme.appearance
+        }
     }
 
     private static func openNewSubmenu() {

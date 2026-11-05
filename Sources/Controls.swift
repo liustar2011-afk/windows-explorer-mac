@@ -26,6 +26,7 @@ struct MenuEntry: Identifiable {
     var icon: Icon? = nil
     var shortcut: String? = nil
     var enabled: Bool = true
+    var destructive: Bool = false
     var checked: Bool = false
     var radio: Bool = false
     var separator: Bool = false
@@ -168,7 +169,7 @@ struct FlyoutView: View {
         .background(
             WinRR(radius: 8)
                 .fill(Win.flyout)
-                .shadow(color: .black.opacity(0.32), radius: 14, y: 6)
+                .shadow(color: Win.menuShadow, radius: 10, y: 4)
         )
         .overlay(WinRR(radius: 8).stroke(Win.stroke, lineWidth: 1))
     }
@@ -218,14 +219,14 @@ struct MenuRow: View {
                     } else if entry.radio {
                         Glyph(icon: .dot, size: 14, color: Win.text)
                     } else if let icon = entry.icon {
-                        Glyph(icon: icon, size: 16, color: Win.text)
+                        Glyph(icon: icon, size: 16, color: entry.enabled ? (entry.destructive ? Win.danger : Win.text) : Win.textDisabled)
                     }
                 }
                 .frame(width: 18, height: 16)
 
                 Text(entry.title)
                     .font(Win.font(.secondary))
-                    .foregroundStyle(entry.enabled ? Win.text : Win.textDisabled)
+                    .foregroundStyle(entry.enabled ? (entry.destructive ? Win.danger : Win.text) : Win.textDisabled)
                     .lineLimit(1)
 
                 Spacer(minLength: 8)
@@ -233,7 +234,7 @@ struct MenuRow: View {
                 if let s = entry.shortcut {
                     Text(s)
                         .font(Win.font(.caption))
-                        .foregroundStyle(Win.textTertiary)
+                        .foregroundStyle(Win.textSecondary)
                 }
                 if entry.submenu != nil {
                     Glyph(icon: .chevronRight, size: 12, color: Win.textSecondary, weight: 1.3)
@@ -274,7 +275,7 @@ struct MenuRow: View {
                     .frame(width: MenuRow.submenuWidth)
                     .background(
                         WinRR(radius: 8).fill(Win.flyout)
-                            .shadow(color: .black.opacity(0.32), radius: 14, y: 6)
+                            .shadow(color: Win.menuShadow, radius: 10, y: 4)
                     )
                     .overlay(WinRR(radius: 8).stroke(Win.stroke, lineWidth: 1))
                     .offset(x: flipSubmenus ? -parentWidth + 1 : MenuRow.submenuWidth - 1, y: -5)

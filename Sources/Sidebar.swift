@@ -11,7 +11,7 @@ struct NavNode: Identifiable {
     let level: Int
     let expandable: Bool
     let pinned: Bool
-    let spacerAbove: Bool
+    var sectionTitle: String? = nil
 }
 
 struct NavPane: View {
@@ -24,12 +24,13 @@ struct NavPane: View {
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(nodes) { node in
-                    if node.spacerAbove {
-                        Rectangle()
-                            .fill(Win.divider)
-                            .frame(height: 1)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 12)
+                    if let title = node.sectionTitle {
+                        Text(L(title))
+                            .font(Win.font(.caption, weight: .semibold))
+                            .foregroundStyle(Win.textSecondary)
+                            .padding(.leading, 24)
+                            .padding(.top, title == "Common locations" ? 2 : 16)
+                            .padding(.bottom, 6)
                     }
                     NavRow(node: node, ex: ex, menus: menus,
                            selected: isSelected(node),
@@ -54,7 +55,22 @@ struct NavPane: View {
 
     private var nodes: [NavNode] {
         var out: [NavNode] = []
-        let places = Places.sidebar
+        let original = Places.sidebar
+        func section(_ place: Place) -> String {
+            if place.special == .thisPC || place.special == .network || place.special == .recycleBin {
+                return "Devices"
+            }
+            if place.special == .home || place.special == .gallery || place.id == "onedrive"
+                || place.url.map({ Places.defaultPinnedPaths.contains($0.path) || $0.path == "/Applications" }) == true {
+                return "Common locations"
+            }
+            return "Project favorites"
+        }
+        // Group the display only; never rewrite Finder's or the user's saved ordering.
+        let places = ["Common locations", "Project favorites", "Devices"].flatMap { group in
+            original.filter { section($0) == group }
+        }
+        var previousSection: String?
 
         func children(of url: URL, level: Int, parentID: String) {
             let dirs = Loader.contents(of: url, showHidden: Prefs.shared.showHidden)
@@ -63,12 +79,12 @@ struct NavPane: View {
                 let id = "\(parentID)/\(d.name)"
                 out.append(NavNode(id: id, title: d.name, icon: .folderOutline, accent: .neutral,
                                    location: .folder(d.url), url: d.url, level: level,
-                                   expandable: true, pinned: false, spacerAbove: false))
+                                   expandable: true, pinned: false))
                 if ex.navExpanded.contains(id) { children(of: d.url, level: level + 1, parentID: id) }
             }
         }
 
-        for (i, p) in places.enumerated() {
+        for p in places {
             let loc: Location? = {
                 switch p.special {
                 case .home: return .home
@@ -79,18 +95,20 @@ struct NavPane: View {
                 case nil: return p.url.map { .folder($0) }
                 }
             }()
-            let spacer = (p.id == "desktop") || (p.id == "thispc")
+            let group = section(p)
+            let heading = previousSection == group ? nil : group
+            previousSection = group
             out.append(NavNode(id: p.id, title: p.title, icon: p.icon, accent: p.accent,
                                location: loc, url: p.url, level: 0,
                                expandable: p.special != .home, pinned: p.special == nil,
-                               spacerAbove: spacer && i > 0))
+                               sectionTitle: heading))
             if ex.navExpanded.contains(p.id) {
                 if p.special == .thisPC {
                     for v in Loader.volumes() {
                         let id = "thispc/\(v.name)"
                         out.append(NavNode(id: id, title: Places.displayName(for: v.url), icon: .drive,
                                            accent: .neutral, location: .folder(v.url), url: v.url,
-                                           level: 1, expandable: true, pinned: false, spacerAbove: false))
+                                           level: 1, expandable: true, pinned: false))
                         if ex.navExpanded.contains(id) { children(of: v.url, level: 2, parentID: id) }
                     }
                 } else if let u = p.url {
@@ -139,8 +157,8 @@ struct NavRow: View {
             } else if node.icon == .folderOutline {
                 FolderIcon(size: 16)
             } else {
-                PlaceIcon(place: Place(id: node.id, title: node.title, icon: node.icon,
-                                       url: node.url, accent: node.accent), size: 16)
+                Glyph(icon: node.icon, size: 16,
+                      color: selected ? Win.accent : Win.textSecondary)
             }
 
             Text(node.title)
@@ -157,7 +175,7 @@ struct NavRow: View {
                     .padding(.trailing, 6)
             }
         }
-        .frame(height: 32)
+        .frame(height: Win.scaled(30))
         .padding(.leading, 4)
         .background(
             WinRR(radius: 7)
