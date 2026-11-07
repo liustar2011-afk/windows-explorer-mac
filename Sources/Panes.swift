@@ -56,7 +56,7 @@ struct StatusBar: View {
                 .padding(.trailing, 8)
         }
         .frame(height: Win.M.statusBarHeight)
-        .background(Win.statusBar)
+        .background { GlassPlate(role: .status) }
         .overlay(alignment: .top) { Rectangle().fill(Win.divider).frame(height: 1) }
     }
 }
@@ -124,9 +124,10 @@ struct TransfersPanel: View {
             }
         }
         .frame(width: 400)
-        .background(WinRR(radius: 8).fill(Win.flyout)
-            .shadow(color: .black.opacity(0.34), radius: 16, y: 8))
-        .overlay(WinRR(radius: 8).stroke(Win.stroke, lineWidth: 1))
+        .background {
+            FloatingGlass(role: .menu, radius: 8,
+                          shadowColor: .black.opacity(0.34), shadowRadius: 16, shadowY: 8)
+        }
     }
 }
 
@@ -206,7 +207,7 @@ struct DetailsPane: View {
             Spacer(minLength: 0)
         }
         .frame(width: 300)
-        .background(Win.sidebar)
+        .background { GlassPlate(role: .sidebar) }
         .overlay(alignment: .leading) { Rectangle().fill(Win.divider).frame(width: 1) }
     }
 
@@ -293,7 +294,7 @@ struct PreviewPane: View {
             Spacer(minLength: 0)
         }
         .frame(width: 320)
-        .background(Win.sidebar)
+        .background { GlassPlate(role: .sidebar) }
         .overlay(alignment: .leading) { Rectangle().fill(Win.divider).frame(width: 1) }
         .onChange(of: item?.id) { _, _ in loadPreview() }
         .onAppear(perform: loadPreview)

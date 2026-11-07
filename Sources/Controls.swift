@@ -91,6 +91,12 @@ struct WinButton<Content: View>: View {
                 WinRR(radius: corner)
                     .fill(background)
             )
+            .overlay {
+                if LiquidGlass.enabled(interfaceSettings) && enabled && (hovering || pressing || active) {
+                    WinRR(radius: corner)
+                        .stroke(Color.white.opacity(Win.isDark ? 0.22 : 0.62), lineWidth: 0.8)
+                }
+            }
             .contentShape(Rectangle())
             .opacity(enabled ? 1 : 0.42)
             .onHover { hovering = $0 && enabled }
@@ -112,9 +118,10 @@ struct WinButton<Content: View>: View {
 
     private var background: Color {
         if !enabled { return .clear }
-        if pressing { return Win.subtlePress }
-        if active { return Win.selected }
-        if hovering { return Win.subtleHover }
+        let glass = LiquidGlass.enabled(interfaceSettings)
+        if pressing { return glass ? Color.white.opacity(Win.isDark ? 0.08 : 0.34) : Win.subtlePress }
+        if active { return glass ? Win.accent.opacity(Win.isDark ? 0.28 : 0.16) : Win.selected }
+        if hovering { return glass ? Color.white.opacity(Win.isDark ? 0.10 : 0.46) : Win.subtleHover }
         return .clear
     }
 }
@@ -166,12 +173,7 @@ struct FlyoutView: View {
         }
         .padding(.vertical, 4)
         .frame(width: open.width)
-        .background(
-            WinRR(radius: 8)
-                .fill(Win.flyout)
-                .shadow(color: Win.menuShadow, radius: 10, y: 4)
-        )
-        .overlay(WinRR(radius: 8).stroke(Win.stroke, lineWidth: 1))
+        .background { FloatingGlass(role: .menu, radius: 8) }
     }
 }
 
@@ -273,11 +275,7 @@ struct MenuRow: View {
                     }
                     .padding(.vertical, 4)
                     .frame(width: MenuRow.submenuWidth)
-                    .background(
-                        WinRR(radius: 8).fill(Win.flyout)
-                            .shadow(color: Win.menuShadow, radius: 10, y: 4)
-                    )
-                    .overlay(WinRR(radius: 8).stroke(Win.stroke, lineWidth: 1))
+                    .background { FloatingGlass(role: .menu, radius: 8) }
                     .offset(x: flipSubmenus ? -parentWidth + 1 : MenuRow.submenuWidth - 1, y: -5)
                     .onHover { h in if h { cancelClose() } else { scheduleClose() } }
                     .zIndex(10)

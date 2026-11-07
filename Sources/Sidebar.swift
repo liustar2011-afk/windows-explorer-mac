@@ -42,10 +42,7 @@ struct NavPane: View {
         }
         .scrollIndicators(.automatic)
         .frame(maxHeight: .infinity)
-        .background {
-            BackdropMaterial(material: .sidebar)
-                .overlay(Win.sidebar.opacity(0.96))
-        }
+        .background { GlassPlate(role: .sidebar) }
     }
 
     private func isSelected(_ node: NavNode) -> Bool {
@@ -181,6 +178,11 @@ struct NavRow: View {
             WinRR(radius: 7)
                 .fill(selected ? Win.navSelected : (hovering ? Win.subtleHover : .clear))
         )
+        .overlay {
+            if selected && LiquidGlass.enabled(interfaceSettings) {
+                WinRR(radius: 7).stroke(Color.white.opacity(Win.isDark ? 0.16 : 0.55), lineWidth: 0.7)
+            }
+        }
         .overlay(alignment: .leading) {
             if selected {
                 Capsule().fill(Win.accent)

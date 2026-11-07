@@ -212,6 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Settings.shared.theme = theme
         }
         Settings.shared.applyTheme()
+        LiquidPointer.shared.install()
         FinderFavoritesSync.shared.start()
         if env["WINEXP_TEST"] == "drop" { DropHighlight.forceOn = true }
         let start: Location = env["WINEXP_START"].map { .folder(URL(fileURLWithPath: $0)) } ?? .home

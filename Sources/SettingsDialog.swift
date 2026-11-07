@@ -138,6 +138,12 @@ struct SettingsDialog: View {
                 .onTapGesture { settings.theme = mode }
             }
 
+            SettingsRow(title: L("Liquid Glass"),
+                        subtitle: L("Frosted window surfaces. The highlight follows the pointer.")) {
+                WinToggle(isOn: $settings.liquidGlass)
+            }
+            .padding(.top, 8)
+
             Text(L("Text size")).font(Win.font(.secondary, weight: .semibold))
                 .foregroundStyle(Win.text).padding(.top, 10)
             ForEach(TextSize.allCases, id: \.self) { size in

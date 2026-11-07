@@ -377,6 +377,8 @@ enum Localization {
         "About": "关于",
         "Done": "完成",
         "Theme": "主题",
+        "Liquid Glass": "液态玻璃",
+        "Frosted window surfaces. The highlight follows the pointer.": "窗口表面变为磨砂玻璃，高光跟随指针流动。",
         "Accent colour": "强调色",
         "Layout": "布局",
         "Tighter row spacing in Details view": "缩小详细信息视图中的行距",

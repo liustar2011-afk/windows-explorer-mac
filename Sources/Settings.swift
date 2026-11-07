@@ -325,6 +325,7 @@ final class Settings: ObservableObject {
     @Published var language: InterfaceLanguage { didSet { save(); NotificationCenter.default.post(name: .interfaceLanguageChanged, object: nil) } }
     @Published var windowButtonsOnLeft: Bool { didSet { save() } }
     @Published var theme: ThemeMode { didSet { save(); applyTheme() } }
+    @Published var liquidGlass: Bool { didSet { save() } }
     @Published var textSize: TextSize { didSet { save() } }
     @Published var accentID: String { didSet { save() } }
     @Published var bindings: [String: [KeyChord]] { didSet { save() } }
@@ -358,6 +359,11 @@ final class Settings: ObservableObject {
             ?? d.string(forKey: "interfaceLanguage") ?? "system") ?? .system
         windowButtonsOnLeft = d.bool(forKey: "windowButtonsOnLeft")
         theme = ThemeMode(rawValue: d.string(forKey: "theme") ?? "") ?? .system
+        if let flag = ProcessInfo.processInfo.environment["WINEXP_LIQUID_GLASS"] {
+            liquidGlass = flag != "0"
+        } else {
+            liquidGlass = d.object(forKey: "liquidGlass") as? Bool ?? true
+        }
         textSize = TextSize(rawValue: ProcessInfo.processInfo.environment["WINEXP_TEXTSIZE"]
             ?? d.string(forKey: "textSize") ?? "") ?? .standard
         accentID = d.string(forKey: "accentID") ?? "blue"
@@ -378,6 +384,7 @@ final class Settings: ObservableObject {
         d.set(language.rawValue, forKey: "interfaceLanguage")
         d.set(windowButtonsOnLeft, forKey: "windowButtonsOnLeft")
         d.set(theme.rawValue, forKey: "theme")
+        d.set(liquidGlass, forKey: "liquidGlass")
         d.set(textSize.rawValue, forKey: "textSize")
         d.set(accentID, forKey: "accentID")
         d.set(try? JSONEncoder().encode(bindings), forKey: "bindings")

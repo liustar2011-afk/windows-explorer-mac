@@ -32,12 +32,26 @@ struct WinDialog<Content: View, Footer: View>: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .background(Win.chrome)
+            .background {
+                if LiquidGlass.enabled(interfaceSettings) {
+                    Rectangle()
+                        .fill(Win.isDark ? Color.white.opacity(0.05) : Color.white.opacity(0.32))
+                        .overlay(alignment: .top) {
+                            Rectangle().fill(Color.white.opacity(Win.isDark ? 0.14 : 0.60)).frame(height: 1)
+                        }
+                } else {
+                    Win.chrome
+                }
+            }
         }
         .frame(width: width)
-        .background(Win.dialog)
+        .background { GlassPlate(role: .dialog, radius: 8) }
         .clipShape(WinRR(radius: 8))
-        .overlay(WinRR(radius: 8).stroke(Win.strokeStrong, lineWidth: 1))
+        .overlay {
+            if !LiquidGlass.enabled(interfaceSettings) {
+                WinRR(radius: 8).stroke(Win.strokeStrong, lineWidth: 1)
+            }
+        }
         .shadow(color: .black.opacity(0.45), radius: 30, y: 12)
     }
 }

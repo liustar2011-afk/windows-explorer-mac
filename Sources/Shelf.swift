@@ -116,7 +116,7 @@ struct ShelfPane: View {
             .padding(8)
         }
         .frame(width: 240)
-        .background(Win.sidebar)
+        .background { GlassPlate(role: .sidebar) }
         .overlay(alignment: .leading) { Rectangle().fill(Win.divider).frame(width: 1) }
         .overlay(
             Rectangle()

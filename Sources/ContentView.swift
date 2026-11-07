@@ -8,6 +8,7 @@ struct ContentView: View {
     @ObservedObject private var prefs = Prefs.shared
     @ObservedObject private var settings = Settings.shared
     @ObservedObject private var transfers = TransferQueue.shared
+    @State private var windowID: ObjectIdentifier?
 
     /// The pane the chrome is currently driving.
     private var ex: Explorer { model.active }
@@ -37,11 +38,14 @@ struct ContentView: View {
                         }
                         panes()
                             .clipShape(WinRR(radius: 10))
-                            .overlay(WinRR(radius: 10).strokeBorder(Win.cardStroke, lineWidth: 1)
-                                .allowsHitTesting(false))
-                            .shadow(color: Win.surfaceShadow, radius: 3, x: 0, y: 1)
-                            .padding(8)
-                            .background(Win.workspace)
+                            .overlay(GlassCardRim(radius: 10).allowsHitTesting(false))
+                            .shadow(color: LiquidGlass.enabled(settings)
+                                        ? Color.black.opacity(Win.isDark ? 0.32 : 0.12)
+                                        : Win.surfaceShadow,
+                                    radius: LiquidGlass.enabled(settings) ? 8 : 3,
+                                    y: LiquidGlass.enabled(settings) ? 2 : 1)
+                            .padding(LiquidGlass.enabled(settings) ? 12 : 8)
+                            .background { GlassPlate(role: .workspace) }
                         if prefs.showShelf { ShelfPane(ex: ex) }
                         if prefs.showPreviewPane { PreviewPane(ex: ex) }
                         if prefs.showDetailsPane { DetailsPane(ex: ex) }
@@ -104,8 +108,11 @@ struct ContentView: View {
                 if let cmd = note.object as? ExplorerCommand { handle(cmd) }
             }
         }
+        .environment(\.explorerWindowID, windowID)
         .background(WindowAccessor { window in
             AppState.shared.register(window: window, model: model)
+            let id = ObjectIdentifier(window)
+            if windowID != id { windowID = id }
         })
     }
 

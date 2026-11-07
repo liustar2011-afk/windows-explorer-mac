@@ -82,10 +82,7 @@ struct TitleBar: View {
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .frame(height: Win.M.tabStripHeight)
-        .background {
-            BackdropMaterial(material: .titlebar)
-                .overlay(Win.tabStrip.opacity(0.94))
-        }
+        .background { GlassPlate(role: .titlebar) }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResizeNotification)) { _ in
             zoomed = NSApp.keyWindow?.isZoomed ?? false
         }
@@ -105,18 +102,65 @@ HStack(spacing: 0) {
 }
 
 /// Native backdrop blur follows window activation and accessibility settings.
+/// The view never accepts clicks; chrome above it owns hit testing.
 struct BackdropMaterial: NSViewRepresentable {
     let material: NSVisualEffectView.Material
+    var emphasized: Bool = false
+
     func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
+        let view = BackdropEffectView()
         view.material = material
         view.blendingMode = .behindWindow
         view.state = .followsWindowActiveState
+        view.isEmphasized = emphasized
         return view
     }
 
     func updateNSView(_ view: NSVisualEffectView, context: Context) {
         view.material = material
+        view.isEmphasized = emphasized
+    }
+}
+
+final class BackdropEffectView: NSVisualEffectView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// Active tab is a brighter lens on the glass strip. With Liquid Glass off it
+/// is the same solid Chrome tab as before.
+private struct TabChrome: View {
+    var active: Bool
+    var hovering: Bool
+    @ObservedObject private var settings = Settings.shared
+    @ObservedObject private var display = DisplayAccess.shared
+
+    private var glass: Bool { settings.liquidGlass && !display.reduceTransparency }
+
+    var body: some View {
+        ZStack {
+            if active && glass {
+                ChromeTabShape()
+                    .fill(Win.tabActive.opacity(Win.isDark ? 0.84 : 0.92))
+                    .shadow(color: Color.black.opacity(Win.isDark ? 0.28 : 0.08), radius: 3, y: 1)
+                GlassSheen()
+                    .clipShape(ChromeTabShape())
+                ChromeTabShape().stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(Win.isDark ? 0.48 : 0.92),
+                            Color.white.opacity(Win.isDark ? 0.06 : 0.22)
+                        ],
+                        startPoint: .top, endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+            } else if active {
+                ChromeTabShape().fill(Win.tabActive)
+            } else if hovering {
+                WinRR(radius: 8).fill(Win.tabHover).padding(.horizontal, 2).padding(.bottom, 4)
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -183,13 +227,7 @@ struct TabChip: View {
         .padding(.leading, 12)
         .padding(.trailing, 8)
         .frame(width: width, height: 34, alignment: .leading)
-        .background {
-            if active {
-                ChromeTabShape().fill(Win.tabActive)
-            } else if hovering {
-                WinRR(radius: 8).fill(Win.tabHover).padding(.horizontal, 2).padding(.bottom, 4)
-            }
-        }
+        .background { TabChrome(active: active, hovering: hovering) }
         .overlay(alignment: .leading) {
             if separatorBefore && !hovering {
                 Rectangle().fill(Win.tabSeparator).frame(width: 1, height: 18).offset(y: -2)
@@ -263,7 +301,7 @@ struct NavBar: View {
         }
         .padding(.horizontal, 8)
         .frame(height: Win.M.navBarHeight)
-        .background(Win.chrome)
+        .background { GlassPlate(role: .toolbar) }
     }
 
     private var upTitle: String {
@@ -295,8 +333,14 @@ struct AddressBar: View {
                 }
                 .padding(.horizontal, 10)
                 .frame(height: 32)
-                .background(WinRR(radius: 8).fill(Win.fieldFocus))
-                .overlay(WinRR(radius: 8).stroke(Win.accent.opacity(0.7), lineWidth: 1))
+                .background {
+                    if LiquidGlass.enabled(interfaceSettings) {
+                        GlassField(radius: 8, hovering: false, focused: true)
+                    } else {
+                        WinRR(radius: 8).fill(Win.fieldFocus)
+                            .overlay(WinRR(radius: 8).stroke(Win.accent.opacity(0.7), lineWidth: 1))
+                    }
+                }
                 .overlay(alignment: .bottom) {
                     Rectangle().fill(Win.accent).frame(height: 2)
                         .padding(.horizontal, 1)
@@ -317,7 +361,13 @@ struct AddressBar: View {
                     Spacer(minLength: 0)
                 }
                 .frame(height: 32)
-                .background(WinRR(radius: 8).fill(hovering ? Win.fieldHover : Win.field))
+                .background {
+                    if LiquidGlass.enabled(interfaceSettings) {
+                        GlassField(radius: 8, hovering: hovering, focused: false)
+                    } else {
+                        WinRR(radius: 8).fill(hovering ? Win.fieldHover : Win.field)
+                    }
+                }
                 .onHover { hovering = $0 }
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -426,8 +476,16 @@ struct SearchBox: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 32)
-        .background(WinRR(radius: 8).fill(focused ? Win.fieldFocus : (hovering ? Win.fieldHover : Win.field)))
-        .overlay(WinRR(radius: 8).stroke(focused ? Win.accent.opacity(0.7) : .clear, lineWidth: 1))
+        .background {
+            if LiquidGlass.enabled(interfaceSettings) {
+                GlassField(radius: 8, hovering: hovering, focused: focused)
+            } else {
+                WinRR(radius: 8).fill(focused ? Win.fieldFocus : (hovering ? Win.fieldHover : Win.field))
+            }
+        }
+        .overlay(WinRR(radius: 8).stroke(
+            LiquidGlass.enabled(interfaceSettings) ? Color.clear : (focused ? Win.accent.opacity(0.7) : .clear),
+            lineWidth: 1))
         .onHover { hovering = $0 }
         .onReceive(NotificationCenter.default.publisher(for: .focusSearch)) { _ in focused = true }
     }
@@ -575,10 +633,10 @@ struct CommandBar: View {
         }
         .padding(.horizontal, 8)
         .frame(height: Win.M.commandBarHeight)
-        .background(
-            Rectangle().fill(Win.commandBar)
+        .background {
+            GlassPlate(role: .toolbar)
                 .shadow(color: Win.surfaceShadow, radius: 6, x: 0, y: 2)
-        )
+        }
         .onPreferenceChange(FrameKey.self) { frames.merge($0, uniquingKeysWith: { _, b in b }) }
     }
 
