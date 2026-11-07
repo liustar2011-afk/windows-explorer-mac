@@ -257,24 +257,24 @@ enum DropHandler {
         }
         group.notify(queue: .main) {
             guard !urls.isEmpty else { return }
+            let destination = Transfers.dropDestination(dest)
             // Dropping a folder onto itself or into its own subtree would loop.
-            let valid = urls.filter { !dest.path.hasPrefix($0.path + "/") && $0.path != dest.path }
+            let valid = urls.filter { source in
+                let sourcePath = source.standardizedFileURL.path
+                let destPath = destination.path
+                return sourcePath != destPath && !destPath.hasPrefix(sourcePath == "/" ? "/" : sourcePath + "/")
+            }
             guard !valid.isEmpty else { NSSound.beep(); return }
             let flags = NSEvent.modifierFlags
             // Windows: Ctrl forces copy, Shift forces move; otherwise move within a
-            // volume and copy across volumes.
+            // volume and copy across volumes. Resolve shortcuts before deciding,
+            // so Applications in a disk image copies onto the real folder.
             let forceCopy = flags.contains(.control) || flags.contains(.option)
             let forceMove = flags.contains(.shift) || flags.contains(.command)
-            let sameVolume = valid.allSatisfy { volumeID(of: $0) == volumeID(of: dest) }
-            let kind: TransferJob.Kind =
-                (forceCopy || (!forceMove && !sameVolume)) ? .copy : .move
-            ex.transfer(kind: kind, sources: valid, to: dest)
+            let kind = Transfers.dropKind(sources: valid, destination: dest,
+                                          forceCopy: forceCopy, forceMove: forceMove)
+            ex.transfer(kind: kind, sources: valid, to: destination)
         }
         return true
-    }
-
-    private static func volumeID(of url: URL) -> String {
-        (try? url.resourceValues(forKeys: [.volumeIdentifierKey]))
-            .flatMap { $0.volumeIdentifier as? NSObject }?.description ?? ""
     }
 }

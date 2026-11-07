@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import DiskArbitration
 import UniformTypeIdentifiers
 
 // MARK: - File kinds (drive the icon + type-name columns)
@@ -344,18 +345,88 @@ enum Loader {
     static func item(at url: URL) -> FileItem? {
         let v = try? url.resourceValues(forKeys: Set(keys))
         let name = v?.name ?? url.lastPathComponent
+        let isPackage = v?.isPackage ?? false
+        let isSymlink = v?.isSymbolicLink ?? false
+        // A package is a directory, so it has no file size of its own. On a
+        // disk image that shows up as 1 KB, and Spotlight reports the same
+        // bundle as 1 byte. The size of the app is the sum of the files inside.
+        var size = Int64(v?.fileSize ?? v?.totalFileAllocatedSize ?? 0)
+        if isPackage && !isSymlink && volumeIsDiskImage(url) {
+            size = packageContentsSize(url)
+        }
         return FileItem(
             url: url,
             name: name,
             isDirectory: v?.isDirectory ?? false,
-            isPackage: v?.isPackage ?? false,
+            isPackage: isPackage,
             isHidden: (v?.isHidden ?? false) || name.hasPrefix("."),
-            isSymlink: v?.isSymbolicLink ?? false,
-            size: Int64(v?.fileSize ?? v?.totalFileAllocatedSize ?? 0),
+            isSymlink: isSymlink,
+            size: size,
             modified: v?.contentModificationDate ?? .distantPast,
             created: v?.creationDate ?? .distantPast,
             ext: url.pathExtension
         )
+    }
+
+    private static let lock = NSLock()
+    private static var diskImageVolumes: [String: Bool] = [:]
+    private static var packageSizes: [String: Int64] = [:]
+
+    /// Volumes mounted from a .dmg report device model "Disk Image".
+    private static func volumeIsDiskImage(_ url: URL) -> Bool {
+        let volume = (try? url.resourceValues(forKeys: [.volumeURLKey]).volume) ?? url
+        let key = volume.path
+        lock.lock()
+        if let cached = diskImageVolumes[key] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+        let image = diskImageDevice(volume)
+        lock.lock()
+        diskImageVolumes[key] = image
+        lock.unlock()
+        return image
+    }
+
+    private static func diskImageDevice(_ volume: URL) -> Bool {
+        guard let session = DASessionCreate(kCFAllocatorDefault),
+              let disk = DADiskCreateFromVolumePath(kCFAllocatorDefault, session, volume as CFURL),
+              let info = DADiskCopyDescription(disk) as? [String: Any] else { return false }
+        return info[kDADiskDescriptionDeviceModelKey as String] as? String == "Disk Image"
+    }
+
+    /// Logical size of a bundle: every file inside it, without following links.
+    private static func packageContentsSize(_ url: URL) -> Int64 {
+        let stamp = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)?
+            .timeIntervalSince1970 ?? 0
+        let key = "\(url.path)|\(stamp)"
+        lock.lock()
+        if let cached = packageSizes[key] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        var bytes: Int64 = 0
+        let childKeys: Set<URLResourceKey> = [.fileSizeKey, .isDirectoryKey, .isSymbolicLinkKey]
+        let enumerator = FileManager.default.enumerator(
+            at: url, includingPropertiesForKeys: Array(childKeys), options: [],
+            errorHandler: { _, _ in true })
+        while let child = enumerator?.nextObject() as? URL {
+            let values = try? child.resourceValues(forKeys: childKeys)
+            if values?.isSymbolicLink == true {
+                bytes += Int64(values?.fileSize ?? 0)
+                continue
+            }
+            if values?.isDirectory == true { continue }
+            bytes += Int64(values?.fileSize ?? 0)
+        }
+
+        lock.lock()
+        packageSizes[key] = bytes
+        lock.unlock()
+        return bytes
     }
 
     static func contents(of url: URL, showHidden: Bool) -> [FileItem] {

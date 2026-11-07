@@ -378,4 +378,39 @@ enum Transfers {
         guard let x = idA as? NSObject, let y = idB as? NSObject else { return false }
         return x == y
     }
+
+    /// The Applications icon in a disk image is a shortcut to the real folder.
+    /// Its own volume is the image, so a drop onto the shortcut looks like a
+    /// same-volume move. Moving then fails because the image is read-only, and
+    /// the app never lands in /Applications.
+    static func linkedFolder(_ url: URL) -> URL? {
+        let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isAliasFileKey])
+        let resolved: URL
+        if values?.isSymbolicLink == true {
+            resolved = url.resolvingSymlinksInPath()
+        } else if values?.isAliasFile == true {
+            guard let alias = try? URL(resolvingAliasFileAt: url, options: [.withoutMounting]) else { return nil }
+            resolved = alias
+        } else {
+            return nil
+        }
+        let standard = resolved.standardizedFileURL
+        guard standard.path != url.standardizedFileURL.path else { return nil }
+        let info = try? standard.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+        guard info?.isDirectory == true, info?.isPackage != true else { return nil }
+        return standard
+    }
+
+    static func dropDestination(_ url: URL) -> URL {
+        linkedFolder(url) ?? url.standardizedFileURL
+    }
+
+    /// Copy when the resolved destination is another volume. A shortcut must be
+    /// resolved first, or a drag from a disk image onto Applications is a move.
+    static func dropKind(sources: [URL], destination: URL, forceCopy: Bool, forceMove: Bool) -> TransferJob.Kind {
+        let destination = dropDestination(destination)
+        let same = sources.allSatisfy { sameVolume($0, destination) }
+        if forceCopy || (!forceMove && !same) { return .copy }
+        return .move
+    }
 }

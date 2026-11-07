@@ -244,7 +244,7 @@ struct DetailsPane: View {
             VStack(alignment: .leading, spacing: 12) {
                 PropRow(label: L("Date modified"), value: item.modifiedText)
                 PropRow(label: L("Date created"), value: item.createdText)
-                if !item.isDirectory {
+                if !item.isDirectory || (item.isPackage && item.size > 0) {
                     PropRow(label: L("Size"), value: FileItem.friendlySize(item.size))
                 }
                 PropRow(label: L("Location"), value: item.url.deletingLastPathComponent().path)

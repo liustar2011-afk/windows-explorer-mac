@@ -214,6 +214,7 @@ enum SelfTest {
         checkJunkCleanup(root: root)
         checkBatchRename()
         checkArchives(root: root)
+        checkDiskImageSizes(root: root)
         checkCompare(root: root, sub: sub)
         checkShelf(root: root)
         checkWorkspaces(root: root, sub: sub)
@@ -761,6 +762,95 @@ enum SelfTest {
         let failure = Archives.extract(archive, entries: [], to: destination)
         check("an archive extracts", failure == nil
               && FileManager.default.fileExists(atPath: destination.appendingPathComponent("alpha.txt").path))
+    }
+
+    /// An app on a mounted disk image used to show as 1 KB, because a package
+    /// has no file size of its own.
+    private static func checkDiskImageSizes(root: URL) {
+        let fm = FileManager.default
+        let staging = root.appendingPathComponent("image-src")
+        let payloadDir = staging.appendingPathComponent("Demo.app/Contents/MacOS")
+        let localDir = root.appendingPathComponent("Local.app/Contents/MacOS")
+        try? fm.createDirectory(at: payloadDir, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: localDir, withIntermediateDirectories: true)
+        let payload = Data(repeating: 0x61, count: 4096)
+        try? payload.write(to: payloadDir.appendingPathComponent("demo"))
+        try? payload.write(to: localDir.appendingPathComponent("demo"))
+        try? Data("hello".utf8).write(to: staging.appendingPathComponent("note.txt"))
+        let install = root.appendingPathComponent("install-target")
+        try? fm.createDirectory(at: install, withIntermediateDirectories: true)
+        try? fm.createSymbolicLink(atPath: staging.appendingPathComponent("Applications").path,
+                                   withDestinationPath: install.path)
+        let sameVolumeLink = root.appendingPathComponent("folder-link")
+        try? fm.removeItem(at: sameVolumeLink)
+        try? fm.createSymbolicLink(atPath: sameVolumeLink.path, withDestinationPath: install.path)
+        let localNote = root.appendingPathComponent("note-local.txt")
+        fm.createFile(atPath: localNote.path, contents: Data("x".utf8))
+        check("a shortcut to a folder on the same volume is still a move",
+              Transfers.linkedFolder(sameVolumeLink)?.standardizedFileURL.path == install.standardizedFileURL.path
+              && Transfers.dropKind(sources: [localNote], destination: sameVolumeLink,
+                                    forceCopy: false, forceMove: false) == .move)
+
+        if let local = Loader.item(at: root.appendingPathComponent("Local.app")) {
+            check("packages outside a disk image are not measured by walking them",
+                  local.isPackage && local.size < 4096)
+        } else {
+            check("packages outside a disk image are not measured by walking them", false)
+        }
+
+        let image = root.appendingPathComponent("sizes.dmg")
+        let created = capture("/usr/bin/hdiutil", [
+            "create", "-volname", "winexp\(getpid())", "-srcfolder", staging.path,
+            "-ov", "-format", "UDZO", image.path,
+        ])
+        guard fm.fileExists(atPath: image.path) else {
+            check("built a disk image [\(created.prefix(160))]", false)
+            return
+        }
+        let attached = capture("/usr/bin/hdiutil", ["attach", "-readonly", "-nobrowse", image.path])
+        let mount = attached.split(separator: "\n").compactMap { line -> String? in
+            guard let path = line.split(separator: "\t").last else { return nil }
+            let text = String(path)
+            return text.hasPrefix("/Volumes/") ? text : nil
+        }.last
+        defer {
+            if let mount {
+                _ = capture("/usr/bin/hdiutil", ["detach", mount, "-force"])
+            }
+        }
+        guard let mount else {
+            check("mounted a disk image [\(attached.prefix(160))]", false)
+            return
+        }
+
+        let mounted = URL(fileURLWithPath: mount)
+        let items = Loader.contents(of: mounted, showHidden: false)
+        let app = items.first { $0.name == "Demo.app" }
+        let note = items.first { $0.name == "note.txt" }
+        check("a package on a disk image shows the size of its contents [\(app?.size ?? -1) \(app?.sizeText ?? "")]",
+              app?.isPackage == true && app?.size == 4096 && app?.sizeText == "4 KB")
+        check("a plain file on a disk image keeps its own size",
+              note?.size == 5 && note?.sizeText == "1 KB")
+        let alias = mounted.appendingPathComponent("Applications")
+        let linked = Transfers.linkedFolder(alias)
+        check("the Applications shortcut resolves outside the disk image [\(linked?.path ?? "")]",
+              linked?.standardizedFileURL.path == install.standardizedFileURL.path)
+        check("dragging an app onto that shortcut copies instead of moving",
+              Transfers.dropKind(sources: [mounted.appendingPathComponent("Demo.app")],
+                                 destination: alias, forceCopy: false, forceMove: false) == .copy)
+    }
+
+    private static func capture(_ launch: String, _ args: [String]) -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: launch)
+        process.arguments = args
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        do { try process.run() } catch { return error.localizedDescription }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(data: data, encoding: .utf8) ?? ""
     }
 
     private static func checkCompare(root: URL, sub: URL) {

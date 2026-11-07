@@ -609,7 +609,9 @@ final class Explorer: ObservableObject {
             }
             return
         }
-        if item.isDirectory && !item.isPackage {
+        if let folder = Transfers.linkedFolder(item.url) {
+            go(to: folder)
+        } else if item.isDirectory && !item.isPackage {
             go(to: item.url)
         } else if Archives.isArchive(item.url) {
             go(to: .archive(item.url, ""))

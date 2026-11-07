@@ -302,7 +302,12 @@ struct ItemInteraction: ViewModifier {
     let item: FileItem
     @State private var dropTargeted = false
 
-    private var acceptsDrop: Bool { item.isDirectory && !item.isPackage }
+    private var acceptsDrop: Bool {
+        if item.isPackage { return false }
+        if item.isDirectory { return true }
+        // The Applications shortcut in a disk image is not itself a folder.
+        return item.isSymlink && Transfers.linkedFolder(item.url) != nil
+    }
 
     func body(content: Content) -> some View {
         content
